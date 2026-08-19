@@ -141,6 +141,8 @@ app.get('/api/admin/rides', auth, (req, res) => {
 
 // --- Static files ---
 
+app.get('/manifest.json', (req, res) => res.sendFile(__dirname + '/manifest.json'));
+app.get('/sw.js', (req, res) => res.sendFile(__dirname + '/sw.js'));
 app.get('/admin', (req, res) => res.sendFile(__dirname + '/admin.html'));
 app.get('/client', (req, res) => res.sendFile(__dirname + '/client.html'));
 app.get('/driver', (req, res) => res.sendFile(__dirname + '/driver.html'));
