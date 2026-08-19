@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0e14">
+<title>RideSA — Driver</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0e14;color:#e0e8f0;font-size:16px;line-height:1.5}
+input{font-size:16px;width:100%;padding:14px 16px;background:#111820;border:1px solid #1e2a36;border-radius:10px;color:#fff;margin-bottom:12px}
+input:focus{outline:none;border-color:#5fd0ff}
+.screen{display:none;padding:20px;max-width:480px;margin:0 auto;min-height:100vh}
+.screen.active{display:flex;flex-direction:column}
+h1{font-size:22px;font-weight:800;color:#fff;margin-bottom:4px}
+h1 span{color:#5fd0ff}
+.sub{color:#90a0b0;font-size:14px;margin-bottom:24px}
+.btn{width:100%;padding:16px;background:#5fd0ff;color:#0a0e14;border:none;border-radius:10px;font-weight:700;font-size:16px;cursor:pointer;margin-top:8px}
+.btn:hover{background:#7fdfff}
+.btn.accept{background:#1a3a2a;color:#4ade80}
+.btn.accept:hover{background:#2a4a3a}
+.btn.complete{background:#3a3a1a;color:#fbbf24}
+.btn.secondary{background:#1e2a36;color:#b0c0d0}
+.link{color:#5fd0ff;text-align:center;margin-top:16px;font-size:14px;cursor:pointer}
+.error{color:#f87171;font-size:13px;margin-bottom:8px}
+.card{background:#111820;border:1px solid #1e2a36;border-radius:12px;padding:16px;margin-bottom:12px}
+.card .title{font-weight:600;color:#fff;margin-bottom:4px}
+.card .meta{font-size:13px;color:#90a0b0}
+.card .fare{font-size:20px;font-weight:700;color:#4ade80;margin-top:8px}
+.top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.top-bar h1{font-size:20px;margin:0}
+.status{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.status.available{background:#1a3a5a;color:#5fd0ff}
+.status.active{background:#3a3a1a;color:#fbbf24}
+.status.completed{background:#1a3a2a;color:#4ade80}
+.status.cancelled{background:#3a1a1a;color:#f87171}
+.online-toggle{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#111820;border:1px solid #1e2a36;border-radius:10px;margin-bottom:16px;cursor:pointer}
+.online-toggle .dot{width:12px;height:12px;border-radius:50%;background:#4ade80}
+.online-toggle .dot.offline{background:#f87171}
+.online-toggle span{font-weight:600;flex:1}
+#driver-map{height:220px;border-radius:10px;margin-bottom:12px;border:1px solid #1e2a36;z-index:0}
+.directions{font-size:13px;color:#b0c0d0;background:#111820;border:1px solid #1e2a36;border-radius:10px;padding:12px;margin-top:8px;max-height:200px;overflow-y:auto}
+.directions .step{padding:6px 0;border-bottom:1px solid #1a2430}
+.directions .step:last-child{border:none}
+.directions .step .icon{display:inline-block;width:20px;text-align:center;margin-right:6px}
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div class="screen active" id="screen-login">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+    <h1 style="font-size:32px;text-align:center;margin-bottom:4px"><span>Ride</span>SA</h1>
+    <p style="text-align:center;color:#90a0b0;margin-bottom:8px;font-size:14px">Driver Portal</p>
+    <p style="text-align:center;color:#607080;margin-bottom:32px;font-size:12px">Earn on your schedule</p>
+    <input id="login-name" placeholder="Your name">
+    <input id="login-id" placeholder="Phone number or email">
+    <input id="login-pass" placeholder="Password" type="password">
+    <div class="error" id="login-error"></div>
+    <button class="btn" onclick="login()">Get Started</button>
+    <div class="link" onclick="toggleLogin()">Already registered? Sign in</div>
+  </div>
+</div>
+
+<!-- Driver Home -->
+<div class="screen" id="screen-home">
+  <div class="top-bar">
+    <h1><span>Ride</span>SA</h1>
+    <span style="color:#90a0b0;font-size:14px" id="home-name"></span>
+  </div>
+
+  <div class="online-toggle" id="online-toggle" onclick="toggleOnline()">
+    <div class="dot" id="online-dot"></div>
+    <span id="online-label">Go Online</span>
+    <span style="color:#607080;font-size:13px">Tap to toggle</span>
+  </div>
+
+  <div id="active-ride-section" style="display:none">
+    <div style="font-size:13px;text-transform:uppercase;color:#7090a0;letter-spacing:1px;margin-bottom:8px">Active Ride</div>
+    <div id="active-ride-card"></div>
+  </div>
+
+  <div style="margin-top:20px">
+    <div style="font-size:13px;text-transform:uppercase;color:#7090a0;letter-spacing:1px;margin-bottom:8px">Available Rides</div>
+    <div id="available-rides"></div>
+  </div>
+
+  <div style="margin-top:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:13px;text-transform:uppercase;color:#7090a0;letter-spacing:1px">My Earnings</div>
+      <div class="link" style="margin:0;font-size:13px" onclick="showScreen('history')">History</div>
+    </div>
+    <div id="earnings-summary"></div>
+  </div>
+
+  <div style="margin-top:auto;padding-top:20px;text-align:center">
+    <div class="link" style="color:#f87171" onclick="logout()">Logout</div>
+  </div>
+</div>
+
+<!-- Ride History -->
+<div class="screen" id="screen-history">
+  <div class="top-bar">
+    <div class="link" style="margin:0" onclick="showScreen('home')">← Back</div>
+    <h1 style="font-size:18px;margin:0">My Rides</h1>
+    <div style="width:40px"></div>
+  </div>
+  <div id="all-rides"></div>
+</div>
+
+<script>
+const API = window.location.origin + '/api';
+let token = null, user = null, online = false, pollTimer = null;
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  if (id === 'home') loadHome();
+  if (id === 'history') loadHistory();
+}
+
+function toggleLogin() {
+  document.getElementById('login-name').style.display = 
+    document.getElementById('login-name').style.display === 'none' ? 'block' : 'none';
+}
+
+async function login() {
+  const name = document.getElementById('login-name').value;
+  const login = document.getElementById('login-id').value;
+  const password = document.getElementById('login-pass').value;
+  document.getElementById('login-error').textContent = '';
+  if (!login) return document.getElementById('login-error').textContent = 'Enter phone or email';
+  try {
+    let r = await fetch(API + '/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({login, password})
+    });
+    if (r.status === 401) {
+      if (!name) return document.getElementById('login-error').textContent = 'First time? Enter your name to register';
+      r = await fetch(API + '/auth/register', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({name, phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role:'driver'})
+      });
+    }
+    const d = await r.json();
+    if (d.error) return document.getElementById('login-error').textContent = d.error;
+    token = d.token; user = d.user;
+    document.getElementById('home-name').textContent = 'Hi, ' + user.name;
+    showScreen('home');
+    pollTimer = setInterval(loadHome, 5000); // auto-refresh every 5s
+  } catch(e) {
+    document.getElementById('login-error').textContent = 'Server offline: ' + e.message;
+  }
+}
+
+async function api(path) { const r = await fetch(API + path, {headers:{'Authorization':'Bearer '+token}}); return r.json(); }
+
+function toggleOnline() {
+  online = !online;
+  document.getElementById('online-dot').className = 'dot' + (online ? '' : ' offline');
+  document.getElementById('online-label').textContent = online ? 'Online' : 'Offline';
+  if (online) loadHome();
+}
+
+async function loadHome() {
+  if (!token) return;
+  const rides = await api('/rides');
+  // Active ride = accepted by me, not completed
+  const active = rides.find(r => r.driverId === user.id && r.status === 'accepted');
+  const available = rides.filter(r => r.status === 'requested' && !r.driverId);
+  const completed = rides.filter(r => r.driverId === user.id && r.status === 'completed');
+  const earnings = completed.reduce((s, r) => s + (r.fare || 0), 0);
+
+  document.getElementById('active-ride-section').style.display = active ? 'block' : 'none';
+  if (active) {
+    document.getElementById('active-ride-card').innerHTML = `
+      <div class="card" style="border-color:#4ade80">
+        <div class="title">${active.pickup} → ${active.dropoff}</div>
+        <div class="meta">${new Date(active.created).toLocaleString('en-ZA')}</div>
+        <div class="fare">R${active.fare || '—'}</div>
+        <div id="driver-map"></div>
+        <div id="driver-directions" class="directions" style="display:none"><div class="step">Loading route...</div></div>
+        <button class="btn complete" onclick="completeRide('${active.id}')">Complete Ride</button>
+      </div>`;
+    setTimeout(() => loadDriverRoute(active.pickup, active.dropoff), 300);
+  }
+
+  document.getElementById('available-rides').innerHTML = available.length
+    ? available.map(r => `
+      <div class="card">
+        <div class="title">${r.pickup}</div>
+        <div class="meta">→ ${r.dropoff}</div>
+        <div class="meta" style="margin-top:4px">${new Date(r.created).toLocaleString('en-ZA')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:8px 0;border-top:1px solid #1e2a36">
+          <span style="font-size:20px;font-weight:700;color:#4ade80">${r.fare ? 'R'+r.fare : '—'}</span>
+          <span style="color:#90a0b0;font-size:13px">${r.fare ? 'Est. fare' : 'No estimate'}</span>
+        </div>
+        <button class="btn accept" onclick="acceptRide('${r.id}')">Accept Ride</button>
+      </div>`).join('')
+    : '<div style="color:#607080;text-align:center;padding:20px;font-size:14px">' + (online ? 'No rides available right now' : 'Go online to see available rides') + '</div>';
+
+  document.getElementById('earnings-summary').innerHTML = `
+    <div class="card">
+      <div style="font-size:28px;font-weight:700;color:#4ade80">R${earnings}</div>
+      <div class="meta">${completed.length} ride${completed.length !== 1 ? 's' : ''} completed</div>
+    </div>`;
+}
+
+async function loadHistory() {
+  const rides = await api('/rides');
+  const mine = rides.filter(r => r.driverId === user.id);
+  document.getElementById('all-rides').innerHTML = mine.length
+    ? mine.map(r => {
+        const cls = r.status === 'completed' ? 'completed' : r.status === 'cancelled' ? 'cancelled' : 'active';
+        return `<div class="card">
+          <div class="title">${r.pickup} → ${r.dropoff}</div>
+          <div class="meta">${new Date(r.created).toLocaleString('en-ZA')}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <span class="status ${cls}">${r.status}</span>
+            <span style="font-weight:700;color:#fff">${r.fare ? 'R'+r.fare : '—'}</span>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div style="color:#607080;text-align:center;padding:40px">No rides yet</div>';
+}
+
+async function acceptRide(id) {
+  try {
+    const r = await fetch(API + '/rides/' + id + '/accept', {
+      method: 'PUT', headers: {'Authorization':'Bearer '+token}
+    });
+    const d = await r.json();
+    if (d.error) return alert(d.error);
+    loadHome();
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function completeRide(id) {
+  if (!confirm('Complete this ride?')) return;
+  try {
+    const r = await fetch(API + '/rides/' + id + '/complete', {
+      method: 'PUT', headers: {'Authorization':'Bearer '+token}
+    });
+    const d = await r.json();
+    if (d.error) return alert(d.error);
+    loadHome();
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function loadDriverRoute(pickup, dropoff) {
+  let dMap = L.map('driver-map').setView([-26.2, 28.0], 10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(dMap);
+  setTimeout(() => dMap.invalidateSize(), 400);
+  // Geocode both
+  const [pr, dr] = await Promise.all([
+    fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(pickup)+'&limit=1'),
+    fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(dropoff)+'&limit=1')
+  ]);
+  const [pd, dd] = await Promise.all([pr.json(), dr.json()]);
+  if (!pd.length || !dd.length) return;
+  const pLatLng = [parseFloat(pd[0].lat), parseFloat(pd[0].lon)];
+  const dLatLng = [parseFloat(dd[0].lat), parseFloat(dd[0].lon)];
+  // Markers
+  L.marker(pLatLng, {icon: L.divIcon({className:'',html:'<div style="background:#5fd0ff;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(dMap).bindPopup('Pickup: '+pickup).openPopup();
+  L.marker(dLatLng, {icon: L.divIcon({className:'',html:'<div style="background:#f87171;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(dMap).bindPopup('Dropoff: '+dropoff);
+  dMap.fitBounds([pLatLng, dLatLng], {padding:[30,30]});
+  // Get route + directions
+  const rr = await fetch('https://router.project-osrm.org/route/v1/driving/'+pLatLng[1]+','+pLatLng[0]+';'+dLatLng[1]+','+dLatLng[0]+'?steps=true&overview=full&geometries=geojson');
+  const rd = await rr.json();
+  if (!rd.routes || !rd.routes.length) return;
+  const route = rd.routes[0];
+  // Draw route line
+  L.geoJSON(route.geometry, {color:'#5fd0ff',weight:4}).addTo(dMap);
+  // Show directions
+  const dirs = document.getElementById('driver-directions');
+  dirs.style.display = 'block';
+  dirs.innerHTML = '<div class="step"><span class="icon">📍</span> <b>Pickup:</b> '+pickup+'</div>' +
+    route.legs[0].steps.map(s => {
+      const icon = s.maneuver.type === 'turn' ? '↩' : s.maneuver.type === 'arrive' ? '🏁' : '➡';
+      return '<div class="step"><span class="icon">'+icon+'</span> '+s.maneuver.modifier+' '+s.name+' ('+Math.round(s.distance)+'m)</div>';
+    }).join('') +
+    '<div class="step"><span class="icon">🏁</span> <b>Dropoff:</b> '+dropoff+'</div>' +
+    '<div class="step" style="border-top:1px solid #1e2a36;padding-top:8px;margin-top:4px;color:#4ade80">📏 '+(route.distance/1000).toFixed(1)+' km · 🕐 '+Math.round(route.duration/60)+' min</div>';
+}
+
+function logout() {
+  clearInterval(pollTimer);
+  token = null; user = null; online = false;
+  document.getElementById('login-name').style.display = 'block';
+  showScreen('login');
+}
+</script>
+</body>
+</html>

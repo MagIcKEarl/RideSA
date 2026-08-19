@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0e14">
+<title>RideSA — Request a Ride</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0e14;color:#e0e8f0;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+input,select,textarea{font-size:16px}
+.screen{display:none;padding:20px;max-width:480px;margin:0 auto;min-height:100vh}
+.screen.active{display:flex;flex-direction:column}
+h1{font-size:24px;font-weight:800;color:#fff;margin-bottom:4px}
+h1 span{color:#5fd0ff}
+.sub{color:#90a0b0;font-size:14px;margin-bottom:24px}
+label{font-size:12px;text-transform:uppercase;color:#7090a0;letter-spacing:1px;margin-bottom:4px;display:block}
+input{width:100%;padding:14px 16px;background:#111820;border:1px solid #1e2a36;border-radius:10px;color:#fff;margin-bottom:12px}
+input:focus{outline:none;border-color:#5fd0ff;background:#1a2430}
+.btn{width:100%;padding:16px;background:#5fd0ff;color:#0a0e14;border:none;border-radius:10px;font-weight:700;font-size:16px;cursor:pointer;margin-top:8px}
+.btn:hover{background:#7fdfff}
+.btn.secondary{background:#1e2a36;color:#b0c0d0}
+.btn.secondary:hover{background:#2a3a4a}
+.btn.danger{background:#3a1a1a;color:#f87171}
+.error{color:#f87171;font-size:13px;margin-bottom:8px}
+.link{color:#5fd0ff;text-align:center;margin-top:16px;font-size:14px;cursor:pointer}
+.link:hover{text-decoration:underline}
+.card{background:#111820;border:1px solid #1e2a36;border-radius:12px;padding:16px;margin-bottom:12px}
+.card .title{font-weight:600;color:#fff;margin-bottom:4px}
+.card .meta{font-size:13px;color:#90a0b0}
+.card .status{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-top:6px}
+.status.requested{background:#1a3a5a;color:#5fd0ff}
+.status.accepted{background:#3a3a1a;color:#fbbf24}
+.status.completed{background:#1a3a2a;color:#4ade80}
+.status.cancelled{background:#3a1a1a;color:#f87171}
+.top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.top-bar h1{font-size:20px;margin:0}
+.ride-count{font-size:13px;color:#7090a0;margin-bottom:16px}
+#map{height:200px;border-radius:10px;margin-bottom:12px;border:1px solid #1e2a36;z-index:0}
+.fare-estimate{text-align:center;padding:12px;background:#1a3a2a;border-radius:10px;margin-bottom:12px;font-size:14px;color:#4ade80}
+.fare-estimate strong{font-size:22px;display:block}
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div class="screen active" id="screen-login">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+    <h1 style="font-size:32px;text-align:center;margin-bottom:4px"><span>Ride</span>SA</h1>
+    <p style="text-align:center;color:#90a0b0;margin-bottom:32px;font-size:14px">Proudly South African. Driving Community.</p>
+    <input id="login-name" placeholder="Your name">
+    <input id="login-id" placeholder="Phone number or email">
+    <input id="login-pass" placeholder="Password" type="password">
+    <div class="error" id="login-error"></div>
+    <button class="btn" onclick="login()">Get Started</button>
+    <div class="link" onclick="toggleLogin()">Already have an account? Sign in</div>
+  </div>
+</div>
+
+<!-- Home -->
+<div class="screen" id="screen-home">
+  <div class="top-bar">
+    <h1><span>Ride</span>SA</h1>
+    <span style="color:#90a0b0;font-size:14px" id="home-name"></span>
+  </div>
+  <div class="card" style="text-align:center;padding:32px 16px;cursor:pointer" onclick="showScreen('request')">
+    <div style="font-size:48px;margin-bottom:12px">🚗</div>
+    <div style="font-size:18px;font-weight:700;color:#fff">Request a Ride</div>
+    <div style="font-size:13px;color:#90a0b0;margin-top:4px">Tell us where to pick you up</div>
+  </div>
+  <div style="margin-top:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:13px;text-transform:uppercase;color:#7090a0;letter-spacing:1px">Your Rides</div>
+      <div class="link" style="margin:0;font-size:13px" onclick="showScreen('rides')">See all</div>
+    </div>
+    <div id="recent-rides"></div>
+  </div>
+  <div style="margin-top:auto;padding-top:20px;text-align:center">
+    <div class="link" style="color:#f87171" onclick="logout()">Logout</div>
+  </div>
+</div>
+
+<!-- Request Ride -->
+<div class="screen" id="screen-request">
+  <div class="top-bar">
+    <div class="link" style="margin:0" onclick="showScreen('home')">← Back</div>
+    <h1 style="font-size:18px;margin:0">New Ride</h1>
+    <div style="width:40px"></div>
+  </div>
+  <div style="margin-top:8px">
+    <div id="map"></div>
+    <label>Pickup location <span class="link" style="margin:0;font-size:12px;display:inline" onclick="getLocation()">📍 Use my location</span></label>
+    <input id="ride-pickup" placeholder="e.g. 33 East Street, Oakdene" oninput="geocode(this.value,'pickup')">
+    <label>Drop-off location</label>
+    <input id="ride-dropoff" placeholder="e.g. 223 Bosworth Street, Alrode" oninput="geocode(this.value,'dropoff')">
+    <div id="fare-estimate" class="fare-estimate" style="display:none">
+      <span>Estimated fare</span>
+      <strong id="fare-amount">R0.00</strong>
+      <span style="font-size:12px" id="fare-distance"></span>
+    </div>
+    <div class="error" id="ride-error"></div>
+    <button class="btn" onclick="requestRide()">Request Ride</button>
+  </div>
+</div>
+
+<!-- Ride History -->
+<div class="screen" id="screen-rides">
+  <div class="top-bar">
+    <div class="link" style="margin:0" onclick="showScreen('home')">← Back</div>
+    <h1 style="font-size:18px;margin:0">My Rides</h1>
+    <div style="width:40px"></div>
+  </div>
+  <div id="all-rides"></div>
+</div>
+
+<script>
+const API = window.location.origin + '/api';
+let token = null;
+let user = null;
+
+let map = null, pickupMarker = null, dropoffMarker = null, routeLine = null;
+let pickupCoords = null, dropoffCoords = null;
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  if (id === 'home') loadHome();
+  if (id === 'rides') loadRides();
+  if (id === 'request') setTimeout(initMap, 300);
+}
+
+function toggleLogin() {
+  document.getElementById('login-name').style.display = 
+    document.getElementById('login-name').style.display === 'none' ? 'block' : 'none';
+}
+
+async function login() {
+  const name = document.getElementById('login-name').value;
+  const login = document.getElementById('login-id').value;
+  const password = document.getElementById('login-pass').value;
+  document.getElementById('login-error').textContent = '';
+  if (!login) return document.getElementById('login-error').textContent = 'Enter phone or email';
+  try {
+    // Try login first
+    let r = await fetch(API + '/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({login, password})
+    });
+    // If login fails (401), try register
+    if (r.status === 401) {
+      if (!name) return document.getElementById('login-error').textContent = 'First time? Enter your name to register';
+      r = await fetch(API + '/auth/register', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({name, phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role:'client'})
+      });
+    }
+    const d = await r.json();
+    if (d.error) return document.getElementById('login-error').textContent = d.error;
+    token = d.token; user = d.user;
+    document.getElementById('home-name').textContent = 'Hi, ' + user.name;
+    showScreen('home');
+  } catch(e) {
+    document.getElementById('login-error').textContent = 'Server offline: ' + e.message;
+  }
+}
+
+async function api(path) {
+  const r = await fetch(API + path, {headers:{'Authorization':'Bearer '+token}});
+  return r.json();
+}
+
+async function loadHome() {
+  const rides = await api('/rides');
+  const recent = rides.slice(0, 3);
+  document.getElementById('recent-rides').innerHTML = recent.length 
+    ? recent.map(r => rideCard(r)).join('')
+    : '<div style="color:#607080;text-align:center;padding:20px">No rides yet. Request your first ride!</div>';
+}
+
+async function loadRides() {
+  const rides = await api('/rides');
+  document.getElementById('all-rides').innerHTML = rides.length
+    ? rides.map(r => rideCard(r)).join('')
+    : '<div style="color:#607080;text-align:center;padding:40px">No rides yet</div>';
+}
+
+function rideCard(r) {
+  const statusClass = r.status === 'accepted' ? 'accepted' : r.status === 'completed' ? 'completed' : r.status === 'cancelled' ? 'cancelled' : 'requested';
+  const canCancel = r.status === 'requested' || r.status === 'accepted';
+  return `<div class="card">
+    <div class="title">${r.pickup} → ${r.dropoff}</div>
+    <div class="meta">${new Date(r.created).toLocaleString('en-ZA')}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <span class="status ${statusClass}">${r.status}</span>
+      <span style="font-weight:700;color:#fff">${r.fare ? 'R'+r.fare : '—'}</span>
+    </div>
+    ${canCancel ? `<button class="btn secondary" style="margin-top:8px;padding:8px;font-size:13px" onclick="cancelRide('${r.id}')">Cancel Ride</button>` : ''}
+  </div>`;
+}
+
+async function requestRide() {
+  const pickup = document.getElementById('ride-pickup').value;
+  const dropoff = document.getElementById('ride-dropoff').value;
+  const fare = parseInt(document.getElementById('ride-pickup').dataset.fare) || null;
+  document.getElementById('ride-error').textContent = '';
+  if (!pickup || !dropoff) return document.getElementById('ride-error').textContent = 'Fill in both locations';
+  try {
+    const r = await fetch(API + '/rides', {
+      method: 'POST', headers: {'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body: JSON.stringify({pickup, dropoff, fare})
+    });
+    const d = await r.json();
+    if (d.error) return document.getElementById('ride-error').textContent = d.error;
+    showScreen('rides');
+  } catch(e) {
+    document.getElementById('ride-error').textContent = 'Failed: ' + e.message;
+  }
+}
+
+async function cancelRide(id) {
+  if (!confirm('Cancel this ride?')) return;
+  try {
+    await fetch(API + '/rides/' + id + '/cancel', {
+      method: 'PUT', headers: {'Authorization':'Bearer '+token}
+    });
+    loadRides();
+  } catch(e) {
+    alert('Failed to cancel: ' + e.message);
+  }
+}
+
+function logout() {
+  token = null; user = null;
+  document.getElementById('login-name').style.display = 'block';
+  showScreen('login');
+}
+
+// --- Map & Geocoding ---
+function initMap() {
+  if (!map) { map = L.map('map').setView([-26.2, 28.0], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map); }
+  setTimeout(() => map.invalidateSize(), 400);
+}
+
+function getLocation() {
+  if (!navigator.geolocation) return alert('Geolocation not available in this browser. Try Chrome or Edge.');
+  document.getElementById('ride-pickup').placeholder = 'Getting location...';
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    const r = await fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lon+'&addressdetails=1');
+    const d = await r.json();
+    const addr = d.display_name || (lat.toFixed(4)+', '+lon.toFixed(4));
+    document.getElementById('ride-pickup').value = addr;
+    if (!map) initMap();
+    map.setView([lat, lon], 14);
+    pickupCoords = [lat, lon];
+    if (pickupMarker) map.removeLayer(pickupMarker);
+    pickupMarker = L.marker([lat, lon], {icon: L.divIcon({className:'',html:'<div style="background:#5fd0ff;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map).bindPopup('You are here').openPopup();
+    if (dropoffCoords) calcFare();
+  }, err => {
+    // ponytail: fallback if GPS denied — default to Johannesburg CBD
+    const msg = err.code === 1 ? 'Location access denied. Allow location in your browser settings and try again.'
+               : err.code === 2 ? 'GPS unavailable. Enable GPS and try again.'
+               : 'Location error. Try again.';
+    if (confirm(msg + '\n\nUse default location (Johannesburg) instead?')) {
+      const lat = -26.2041, lon = 28.0473;
+      document.getElementById('ride-pickup').value = 'Johannesburg, South Africa';
+      if (!map) initMap();
+      map.setView([lat, lon], 12);
+      pickupCoords = [lat, lon];
+      if (pickupMarker) map.removeLayer(pickupMarker);
+      pickupMarker = L.marker([lat, lon], {icon: L.divIcon({className:'',html:'<div style="background:#5fd0ff;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map).bindPopup('Default: Johannesburg').openPopup();
+      if (dropoffCoords) calcFare();
+    }
+  }, {enableHighAccuracy: true, timeout: 10000});
+}
+
+async function geocode(q, type) {
+  if (q.length < 5) return;
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(q)+'&limit=1');
+  const d = await r.json();
+  if (!d.length) return;
+  const latlng = [parseFloat(d[0].lat), parseFloat(d[0].lon)];
+  if (type === 'pickup') {
+    pickupCoords = latlng;
+    if (pickupMarker) map.removeLayer(pickupMarker);
+    pickupMarker = L.marker(latlng, {icon: L.divIcon({className:'',html:'<div style="background:#5fd0ff;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map).bindPopup('Pickup');
+  } else {
+    dropoffCoords = latlng;
+    if (dropoffMarker) map.removeLayer(dropoffMarker);
+    dropoffMarker = L.marker(latlng, {icon: L.divIcon({className:'',html:'<div style="background:#f87171;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map).bindPopup('Dropoff');
+  }
+  map.fitBounds([pickupCoords, dropoffCoords].filter(Boolean), {padding:[30,30]});
+  if (pickupCoords && dropoffCoords) calcFare();
+}
+
+async function calcFare() {
+  if (!pickupCoords || !dropoffCoords) return;
+  const r = await fetch('https://router.project-osrm.org/route/v1/driving/'+pickupCoords[1]+','+pickupCoords[0]+';'+dropoffCoords[1]+','+dropoffCoords[0]+'?overview=false');
+  const d = await r.json();
+  if (!d.routes || !d.routes.length) return;
+  const distKm = d.routes[0].distance / 1000;
+  const mins = Math.round(d.routes[0].duration / 60);
+  // ponytail: R10 base + R8/km
+  const fare = 10 + Math.round(distKm * 8);
+  document.getElementById('fare-estimate').style.display = 'block';
+  document.getElementById('fare-amount').textContent = 'R' + fare;
+  document.getElementById('fare-distance').textContent = distKm.toFixed(1) + ' km · ' + mins + ' min';
+  // Store fare in a data attr for submit
+  document.getElementById('ride-pickup').dataset.fare = fare;
+}
+</script>
+</body>
+</html>

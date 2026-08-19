@@ -1,0 +1,6 @@
+node_modules/
+rides.db
+rides.db-wal
+rides.db-shm
+.env
+.DS_Store
