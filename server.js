@@ -134,7 +134,6 @@ function auth(req, res, next) {
 // --- Rides ---
 
 app.post('/api/rides', auth, (req, res) => {
-  if (req.user.role !== 'client' && req.user.role !== 'admin') return res.status(403).json({ error: 'only clients can request rides' });
   const { pickup, dropoff, fare } = req.body;
   if (!pickup || !dropoff) return res.status(400).json({ error: 'pickup and dropoff required' });
   const id = uuid();
