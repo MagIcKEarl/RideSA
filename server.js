@@ -156,7 +156,6 @@ app.get('/api/rides/:id', auth, (req, res) => {
 });
 
 app.put('/api/rides/:id/accept', auth, (req, res) => {
-  if (req.user.role !== 'driver' && req.user.role !== 'admin') return res.status(403).json({ error: 'only drivers can accept' });
   const ride = getRide.get(req.params.id);
   if (!ride) return res.status(404).json({ error: 'not found' });
   if (ride.status !== 'requested') return res.status(400).json({ error: 'already accepted' });
