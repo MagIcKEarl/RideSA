@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0a0e14">
 <link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');</script>
 <title>Car Pool — Community E-Hailing</title>
 <style>
@@ -51,6 +53,18 @@ h1 span{color:#5fd0ff}
 .tab-content.active{display:block}
 .empty{color:#607080;text-align:center;padding:30px 0;font-size:14px}
 .rider-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0}
+#map-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:#0a0e14;display:none;flex-direction:column}
+#map-overlay.active{display:flex}
+#map-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#111820;border-bottom:1px solid #1e2a36}
+#map-header h2{font-size:18px}
+#map-container{flex:1;min-height:0}
+#map-footer{background:#111820;border-top:1px solid #1e2a36;padding:12px 16px;text-align:center;font-size:14px;color:#90a0b0}
+.map-pin-btn{background:none;border:2px solid #5fd0ff;border-radius:8px;color:#5fd0ff;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:4px}
+
+.autocomplete-wrap{position:relative}
+.suggestions{position:absolute;top:100%;left:0;right:0;background:#111820;border:1px solid #1e2a36;border-radius:0 0 10px 10px;max-height:200px;overflow-y:auto;z-index:100;display:none}
+.suggestions div{padding:12px 16px;cursor:pointer;font-size:14px;border-bottom:1px solid #1e2a36}
+.suggestions div:hover{background:#1e2a36;color:#fff}
 </style>
 </head>
 <body>
@@ -104,8 +118,12 @@ h1 span{color:#5fd0ff}
   <div id="tab-bookings" class="tab-content"><div id="bookings-list"></div></div>
   <div id="tab-mytrips" class="tab-content"><div id="mytrips-list"></div></div>
   <div id="tab-schedule" class="tab-content">
-    <input id="s-pickup" placeholder="Pickup location">
-    <input id="s-dropoff" placeholder="Dropoff location">
+    <input id="s-pickup" placeholder="Pickup location" oninput="autocomplete(this,'sp')" autocomplete="off">
+    <div class="suggestions" id="sp"></div>
+    <button class="map-pin-btn" onclick="showMap('s-pickup')">📍 Pin</button>
+    <input id="s-dropoff" placeholder="Dropoff location" oninput="autocomplete(this,'sd')" autocomplete="off">
+    <div class="suggestions" id="sd"></div>
+    <button class="map-pin-btn" onclick="showMap('s-dropoff')">📍 Pin</button>
     <input id="s-departure" type="datetime-local" placeholder="Departure time">
     <input id="s-price" placeholder="Price per seat (R)" type="number">
     <input id="s-seats" placeholder="Max seats" type="number">
@@ -114,9 +132,51 @@ h1 span{color:#5fd0ff}
   </div>
 </div>
 
+<!-- Map overlay -->
+<div id="map-overlay">
+  <div id="map-header">
+    <h2>📍 Pick location</h2>
+    <span class="link" onclick="closeMap()" style="margin:0;font-size:14px">Done</span>
+  </div>
+  <div id="map-container"></div>
+  <div id="map-footer">Tap the map to drop a pin · <span id="map-coords"></span></div>
+</div>
+
 <script>
+
+let acTimer = {};
+function autocomplete(inp, suggestId) {
+  const wrap = inp.parentElement;
+  wrap.style.position = 'relative';
+  let div = document.getElementById(suggestId);
+  if (!div) {
+    div = document.createElement('div'); div.id = suggestId;
+    div.className = 'suggestions'; wrap.appendChild(div);
+  }
+  clearTimeout(acTimer[suggestId]);
+  acTimer[suggestId] = setTimeout(async () => {
+    const q = inp.value.trim();
+    if (q.length < 3) { div.style.display = 'none'; return; }
+    try {
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(q)+'&limit=5&countrycodes=za');
+      const d = await r.json();
+      div.innerHTML = d.map(p => '<div onclick="pickSuggestion(\''+suggestId+'\',\''+p.display_name.replace(/'/g,"\\'")+'\')">'+p.display_name.split(',')[0]+'<br><small style=\"color:#607080\">'+p.display_name.split(',').slice(1).join(',').trim()+'</small></div>').join('');
+      div.style.display = d.length ? 'block' : 'none';
+    } catch(e) { div.style.display = 'none'; }
+  }, 300);
+}
+function pickSuggestion(suggestId, val) {
+  const div = document.getElementById(suggestId);
+  if (div) div.style.display = 'none';
+  const inp = div ? div.parentElement.querySelector('input') : null;
+  if (inp) inp.value = val.split(',')[0].trim();
+}
+
 const API = window.location.origin + '/api';
 let token = null, user = null;
+let map, mapMarker, mapCircle, mapDrivers=[], mapInputId, mapActive=false;
+
+function normPhone(v) { return v.includes('@') ? '' : v.replace(/^0/, '+27'); }
 
 async function login() {
   const login = document.getElementById('login-id').value;
@@ -126,7 +186,7 @@ async function login() {
   try {
     let r = await fetch(API+'/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password})});
     if (r.status === 401) {
-      r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:'User', phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role:'rider'})});
+      r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:'User', phone: normPhone(login), email: login.includes('@')?login:'', password, role:'rider'})});
     }
     const d = await r.json();
     if (d.error) return document.getElementById('login-error').textContent = d.error;
@@ -139,7 +199,6 @@ async function login() {
 
 function showRegister() {
   document.querySelector('#screen-login h1').style.display = 'none';
-  document.querySelector('#screen-login p').style.display = 'none';
   document.querySelectorAll('#screen-login p').forEach(e => e.style.display = 'none');
   document.getElementById('login-id').style.display = 'none';
   document.getElementById('login-pass').style.display = 'none';
@@ -168,7 +227,7 @@ async function register() {
   if (!name || !login || !password) return document.getElementById('reg-error').textContent = 'Fill in all fields';
   try {
     const r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name, phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role})});
+      body:JSON.stringify({name, phone: normPhone(login), email: login.includes('@')?login:'', password, role})});
     const d = await r.json();
     if (d.error) return document.getElementById('reg-error').textContent = d.error;
     token = d.token; user = d.user;
@@ -207,6 +266,68 @@ function switchTab(name) {
 }
 
 async function api(path) { const r = await fetch(API+path, {headers:{'Authorization':'Bearer '+token}}); return r.json(); }
+
+// --- Map picker ---
+function showMap(inputId) {
+  mapInputId = inputId;
+  document.getElementById('map-overlay').classList.add('active');
+  mapActive = true;
+  setTimeout(() => {
+    const c = document.getElementById('map-container');
+    if (!map) {
+      map = L.map(c).setView([-26.2, 28.0], 13); // default Joburg
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'OSM'}).addTo(map);
+      map.on('click', onMapClick);
+    }
+    map.invalidateSize();
+    // Get user location
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(p => {
+        map.setView([p.coords.latitude, p.coords.longitude], 13);
+        drawMapCircle(p.coords.latitude, p.coords.longitude);
+      }, () => {}, {enableHighAccuracy:true,timeout:5000});
+    }
+    loadNearbyDrivers();
+  }, 200);
+}
+function closeMap() {
+  document.getElementById('map-overlay').classList.remove('active');
+  mapActive = false;
+}
+function onMapClick(e) {
+  const lat = e.latlng.lat.toFixed(6), lng = e.latlng.lng.toFixed(6);
+  if (mapMarker) mapMarker.setLatLng(e.latlng);
+  else mapMarker = L.marker(e.latlng).addTo(map);
+  drawMapCircle(e.latlng.lat, e.latlng.lng);
+  document.getElementById('map-coords').textContent = lat+', '+lng;
+  // Reverse geocode
+  fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng+'&addressdetails=1')
+    .then(r => r.json()).then(d => {
+      const addr = d.display_name || lat+', '+lng;
+      document.getElementById('map-footer').textContent = addr;
+      document.getElementById(mapInputId).value = addr.split(',')[0].trim();
+    }).catch(() => {
+      document.getElementById(mapInputId).value = lat+', '+lng;
+    });
+}
+function drawMapCircle(lat, lng) {
+  if (mapCircle) mapCircle.setLatLng([lat,lng]).setRadius(5000);
+  else mapCircle = L.circle([lat,lng], {radius:5000, color:'#5fd0ff', fillColor:'#5fd0ff', fillOpacity:0.1}).addTo(map);
+}
+async function loadNearbyDrivers() {
+  if (!token) return;
+  try {
+    const drivers = await api('/location/drivers');
+    mapDrivers.forEach(m => map.removeLayer(m));
+    mapDrivers = [];
+    drivers.forEach(d => {
+      const m = L.marker([d.lat, d.lng], {icon: L.divIcon({className:'', html:'🚗', iconSize:[24,24], iconAnchor:[12,12]})}).addTo(map);
+      m.bindPopup(d.name);
+      mapDrivers.push(m);
+    });
+    if (mapActive) setTimeout(loadNearbyDrivers, 15000);
+  } catch(e) {}
+}
 
 async function loadTrips() {
   const trips = await api('/carpool/trips');

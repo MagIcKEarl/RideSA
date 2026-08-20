@@ -48,6 +48,11 @@ h1 span{color:#5fd0ff}
 .directions .step{padding:6px 0;border-bottom:1px solid #1a2430}
 .directions .step:last-child{border:none}
 .directions .step .icon{display:inline-block;width:20px;text-align:center;margin-right:6px}
+
+.autocomplete-wrap{position:relative}
+.suggestions{position:absolute;top:100%;left:0;right:0;background:#111820;border:1px solid #1e2a36;border-radius:0 0 10px 10px;max-height:200px;overflow-y:auto;z-index:100;display:none}
+.suggestions div{padding:12px 16px;cursor:pointer;font-size:14px;border-bottom:1px solid #1e2a36}
+.suggestions div:hover{background:#1e2a36;color:#fff}
 </style>
 </head>
 <body>
@@ -120,6 +125,35 @@ h1 span{color:#5fd0ff}
 </div>
 
 <script>
+
+let acTimer = {};
+function autocomplete(inp, suggestId) {
+  const wrap = inp.parentElement;
+  wrap.style.position = 'relative';
+  let div = document.getElementById(suggestId);
+  if (!div) {
+    div = document.createElement('div'); div.id = suggestId;
+    div.className = 'suggestions'; wrap.appendChild(div);
+  }
+  clearTimeout(acTimer[suggestId]);
+  acTimer[suggestId] = setTimeout(async () => {
+    const q = inp.value.trim();
+    if (q.length < 3) { div.style.display = 'none'; return; }
+    try {
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(q)+'&limit=5&countrycodes=za');
+      const d = await r.json();
+      div.innerHTML = d.map(p => '<div onclick="pickSuggestion(\''+suggestId+'\',\''+p.display_name.replace(/'/g,"\\'")+'\')">'+p.display_name.split(',')[0]+'<br><small style=\"color:#607080\">'+p.display_name.split(',').slice(1).join(',').trim()+'</small></div>').join('');
+      div.style.display = d.length ? 'block' : 'none';
+    } catch(e) { div.style.display = 'none'; }
+  }, 300);
+}
+function pickSuggestion(suggestId, val) {
+  const div = document.getElementById(suggestId);
+  if (div) div.style.display = 'none';
+  const inp = div ? div.parentElement.querySelector('input') : null;
+  if (inp) inp.value = val.split(',')[0].trim();
+}
+
 const API = window.location.origin + '/api';
 let token = null, user = null, online = false, pollTimer = null, locInterval = null, clientLocInterval = null;
 
