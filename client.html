@@ -192,8 +192,9 @@ async function loadRides() {
 }
 
 function rideCard(r) {
-  const statusClass = r.status === 'accepted' ? 'accepted' : r.status === 'completed' ? 'completed' : r.status === 'cancelled' ? 'cancelled' : 'requested';
+  const statusClass = r.status === 'accepted' ? 'accepted' : r.status === 'completed' ? 'completed' : r.status === 'cancelled' ? 'cancelled' : r.status === 'panicked' ? 'cancelled' : 'requested';
   const canCancel = r.status === 'requested' || r.status === 'accepted';
+  const isActive = r.status === 'accepted';
   return `<div class="card">
     <div class="title">${r.pickup} → ${r.dropoff}</div>
     <div class="meta">${new Date(r.created).toLocaleString('en-ZA')}</div>
@@ -202,6 +203,7 @@ function rideCard(r) {
       <span style="font-weight:700;color:#fff">${r.fare ? 'R'+r.fare : '—'}</span>
     </div>
     ${canCancel ? `<button class="btn secondary" style="margin-top:8px;padding:8px;font-size:13px" onclick="cancelRide('${r.id}')">Cancel Ride</button>` : ''}
+    ${isActive ? `<button class="btn danger" style="margin-top:4px;padding:8px;font-size:13px" onclick="panicRide('${r.id}')">🚨 Panic</button>` : ''}
   </div>`;
 }
 
@@ -234,6 +236,19 @@ async function cancelRide(id) {
   } catch(e) {
     alert('Failed to cancel: ' + e.message);
   }
+}
+
+async function panicRide(id) {
+  if (!confirm('🚨 Trigger emergency alert? Your location will be shared with admin.')) return;
+  try {
+    const r = await fetch(API + '/rides/' + id + '/panic', {
+      method: 'PUT', headers: {'Authorization':'Bearer '+token}
+    });
+    const d = await r.json();
+    if (d.error) return alert(d.error);
+    alert('🚨 Emergency reported. Help is on the way.');
+    loadRides();
+  } catch(e) { alert('Failed: ' + e.message); }
 }
 
 function logout() {

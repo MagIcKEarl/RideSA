@@ -165,6 +165,16 @@ app.put('/api/rides/:id/accept', auth, (req, res) => {
   res.json(getRide.get(req.params.id));
 });
 
+// ponytail: panic — sets ride to panicked. Admin sees it in red.
+app.put('/api/rides/:id/panic', auth, (req, res) => {
+  const ride = getRide.get(req.params.id);
+  if (!ride) return res.status(404).json({ error: 'not found' });
+  if (ride.clientId !== req.user.id && ride.driverId !== req.user.id && req.user.role !== 'admin')
+    return res.status(403).json({ error: 'not your ride' });
+  db.prepare("UPDATE rides SET status='panicked' WHERE id=?").run(req.params.id);
+  res.json(getRide.get(req.params.id));
+});
+
 app.put('/api/rides/:id/complete', auth, (req, res) => {
   const ride = getRide.get(req.params.id);
   if (!ride) return res.status(404).json({ error: 'not found' });
