@@ -118,12 +118,12 @@ h1 span{color:#5fd0ff}
   <div id="tab-bookings" class="tab-content"><div id="bookings-list"></div></div>
   <div id="tab-mytrips" class="tab-content"><div id="mytrips-list"></div></div>
   <div id="tab-schedule" class="tab-content">
+    <div id="s-map" style="height:250px;border-radius:10px;margin-bottom:12px;background:#111820"></div>
+    <div class="link" style="margin:0 0 8px 0;font-size:12px;text-align:left" onclick="sGetLocation()">📍 Use my location</div>
     <input id="s-pickup" placeholder="Pickup location" oninput="autocomplete(this,'sp')" autocomplete="off">
     <div class="suggestions" id="sp"></div>
-    <button class="map-pin-btn" onclick="showMap('s-pickup')">📍 Pin</button>
     <input id="s-dropoff" placeholder="Dropoff location" oninput="autocomplete(this,'sd')" autocomplete="off">
     <div class="suggestions" id="sd"></div>
-    <button class="map-pin-btn" onclick="showMap('s-dropoff')">📍 Pin</button>
     <input id="s-departure" type="datetime-local" placeholder="Departure time">
     <input id="s-price" placeholder="Price per seat (R)" type="number">
     <input id="s-seats" placeholder="Max seats" type="number">
@@ -132,15 +132,7 @@ h1 span{color:#5fd0ff}
   </div>
 </div>
 
-<!-- Map overlay -->
-<div id="map-overlay">
-  <div id="map-header">
-    <h2>📍 Pick location</h2>
-    <span class="link" onclick="closeMap()" style="margin:0;font-size:14px">Done</span>
-  </div>
-  <div id="map-container"></div>
-  <div id="map-footer">Tap the map to drop a pin · <span id="map-coords"></span></div>
-</div>
+<!-- Map overlay (removed — now embedded in schedule tab) -->
 
 <script>
 
@@ -174,8 +166,6 @@ function pickSuggestion(suggestId, val) {
 
 const API = window.location.origin + '/api';
 let token = null, user = null;
-let map, mapMarker, mapCircle, mapDrivers=[], mapInputId, mapActive=false;
-
 function normPhone(v) { return v.includes('@') ? '' : v.replace(/^0/, '+27'); }
 
 async function login() {
@@ -185,9 +175,6 @@ async function login() {
   if (!login) return document.getElementById('login-error').textContent = 'Enter phone or email';
   try {
     let r = await fetch(API+'/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password})});
-    if (r.status === 401) {
-      r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:'User', phone: normPhone(login), email: login.includes('@')?login:'', password, role:'rider'})});
-    }
     const d = await r.json();
     if (d.error) return document.getElementById('login-error').textContent = d.error;
     token = d.token; user = d.user;
@@ -262,69 +249,72 @@ function switchTab(name) {
   if (name === 'browse') loadTrips();
   if (name === 'bookings') loadMyBookings();
   if (name === 'mytrips') loadMyTrips();
+  if (name === 'schedule') setTimeout(initSMap, 200);
 }
 
 async function api(path) { const r = await fetch(API+path, {headers:{'Authorization':'Bearer '+token}}); return r.json(); }
 
-// --- Map picker ---
-function showMap(inputId) {
-  mapInputId = inputId;
-  document.getElementById('map-overlay').classList.add('active');
-  mapActive = true;
-  setTimeout(() => {
-    const c = document.getElementById('map-container');
-    if (!map) {
-      map = L.map(c).setView([-26.2, 28.0], 13); // default Joburg
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'OSM'}).addTo(map);
-      map.on('click', onMapClick);
-    }
-    map.invalidateSize();
-    // Get user location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(p => {
-        map.setView([p.coords.latitude, p.coords.longitude], 13);
-        drawMapCircle(p.coords.latitude, p.coords.longitude);
-      }, () => {}, {enableHighAccuracy:true,timeout:5000});
-    }
-    loadNearbyDrivers();
-  }, 200);
+// --- Embedded map (schedule tab) ---
+let sMap = null, sPickupMarker = null, sDropoffMarker = null, sPickupCoords = null, sDropoffCoords = null, sDrivers = [], sDriverTimer = null;
+
+function initSMap() {
+  const c = document.getElementById('s-map');
+  if (!c) return;
+  if (!sMap) {
+    sMap = L.map(c).setView([-26.2, 28.0], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'OSM'}).addTo(sMap);
+    sMap.on('click', e => {
+      if (!sPickupCoords) setSPickup(e.latlng);
+      else if (!sDropoffCoords) setSDropoff(e.latlng);
+      else { setSPickup(e.latlng); setSDropoff(null); }
+    });
+  }
+  setTimeout(() => sMap.invalidateSize(), 300);
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(p => {
+      if (!sPickupCoords) setSPickup(p.coords);
+    }, () => {}, {enableHighAccuracy:true,timeout:5000});
+  }
+  loadSDrivers();
+  if (sDriverTimer) clearInterval(sDriverTimer);
+  sDriverTimer = setInterval(loadSDrivers, 15000);
 }
-function closeMap() {
-  document.getElementById('map-overlay').classList.remove('active');
-  mapActive = false;
-}
-function onMapClick(e) {
-  const lat = e.latlng.lat.toFixed(6), lng = e.latlng.lng.toFixed(6);
-  if (mapMarker) mapMarker.setLatLng(e.latlng);
-  else mapMarker = L.marker(e.latlng).addTo(map);
-  drawMapCircle(e.latlng.lat, e.latlng.lng);
-  document.getElementById('map-coords').textContent = lat+', '+lng;
-  // Reverse geocode
+function setSPickup(latlng) {
+  const lat = latlng.lat || latlng.latitude, lng = latlng.lng || latlng.longitude;
+  sPickupCoords = [lat, lng];
+  if (sPickupMarker) sPickupMarker.setLatLng([lat,lng]);
+  else sPickupMarker = L.marker([lat,lng], {icon: L.divIcon({className:'',html:'<div style="background:#5fd0ff;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(sMap).bindPopup('Pickup');
+  if (sMap.getZoom() < 14) sMap.setView([lat,lng], 14);
   fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng+'&addressdetails=1')
     .then(r => r.json()).then(d => {
-      const addr = d.display_name || lat+', '+lng;
-      document.getElementById('map-footer').textContent = addr;
-      document.getElementById(mapInputId).value = addr.split(',')[0].trim();
-    }).catch(() => {
-      document.getElementById(mapInputId).value = lat+', '+lng;
-    });
+      document.getElementById('s-pickup').value = (d.display_name||lat+', '+lng).split(',')[0].trim();
+    }).catch(() => {});
 }
-function drawMapCircle(lat, lng) {
-  if (mapCircle) mapCircle.setLatLng([lat,lng]).setRadius(5000);
-  else mapCircle = L.circle([lat,lng], {radius:5000, color:'#5fd0ff', fillColor:'#5fd0ff', fillOpacity:0.1}).addTo(map);
+function setSDropoff(latlng) {
+  if (!latlng) { sDropoffCoords = null; if (sDropoffMarker) { sMap.removeLayer(sDropoffMarker); sDropoffMarker = null; } document.getElementById('s-dropoff').value = ''; return; }
+  const lat = latlng.lat||latlng.latitude, lng = latlng.lng||latlng.longitude;
+  sDropoffCoords = [lat, lng];
+  if (sDropoffMarker) sDropoffMarker.setLatLng([lat,lng]);
+  else sDropoffMarker = L.marker([lat,lng], {icon: L.divIcon({className:'',html:'<div style="background:#f87171;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(sMap).bindPopup('Dropoff');
+  fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng+'&addressdetails=1')
+    .then(r => r.json()).then(d => {
+      document.getElementById('s-dropoff').value = (d.display_name||lat+', '+lng).split(',')[0].trim();
+    }).catch(() => {});
 }
-async function loadNearbyDrivers() {
-  if (!token) return;
+function sGetLocation() {
+  if (!navigator.geolocation) return alert('GPS not available');
+  navigator.geolocation.getCurrentPosition(p => setSPickup(p.coords), () => alert('Could not get location'), {enableHighAccuracy:true,timeout:10000});
+}
+async function loadSDrivers() {
+  if (!token || !sMap) return;
   try {
     const drivers = await api('/location/drivers');
-    mapDrivers.forEach(m => map.removeLayer(m));
-    mapDrivers = [];
+    sDrivers.forEach(m => sMap.removeLayer(m));
+    sDrivers = [];
     drivers.forEach(d => {
-      const m = L.marker([d.lat, d.lng], {icon: L.divIcon({className:'', html:'🚗', iconSize:[24,24], iconAnchor:[12,12]})}).addTo(map);
-      m.bindPopup(d.name);
-      mapDrivers.push(m);
+      const m = L.marker([d.lat, d.lng], {icon: L.divIcon({className:'',html:'<div style="background:#4ade80;width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 8px rgba(74,222,128,.5)"></div>',iconSize:[12,12],iconAnchor:[6,6]})}).addTo(sMap).bindPopup('🚗 <b>'+d.name+'</b>');
+      sDrivers.push(m);
     });
-    if (mapActive) setTimeout(loadNearbyDrivers, 15000);
   } catch(e) {}
 }
 
