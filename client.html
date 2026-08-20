@@ -53,12 +53,10 @@ input:focus{outline:none;border-color:#5fd0ff;background:#1a2430}
   <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
     <h1 style="font-size:32px;text-align:center;margin-bottom:4px"><span>Ride</span>SA</h1>
     <p style="text-align:center;color:#90a0b0;margin-bottom:32px;font-size:14px">Proudly South African. Driving Community.</p>
-    <input id="login-name" placeholder="Your name">
     <input id="login-id" placeholder="Phone number or email">
     <input id="login-pass" placeholder="Password" type="password">
     <div class="error" id="login-error"></div>
     <button class="btn" onclick="login()">Get Started</button>
-    <div class="link" onclick="toggleLogin()">Already have an account? Sign in</div>
     <div class="link" onclick="showForgot()" style="margin-top:4px">Forgot password?</div>
     <div id="forgot-form" style="display:none;width:100%;margin-top:12px">
       <input id="forgot-id" placeholder="Phone or email">
@@ -143,16 +141,10 @@ function showScreen(id) {
   if (id === 'request') setTimeout(initMap, 300);
 }
 
-function toggleLogin() {
-  document.getElementById('login-name').style.display = 
-    document.getElementById('login-name').style.display === 'none' ? 'block' : 'none';
-}
 
 async function login() {
-  const name = document.getElementById('login-name').value;
   const login = document.getElementById('login-id').value;
   const password = document.getElementById('login-pass').value;
-  const nameField = document.getElementById('login-name');
   document.getElementById('login-error').textContent = '';
   if (!login) return document.getElementById('login-error').textContent = 'Enter phone or email';
   try {
@@ -163,16 +155,9 @@ async function login() {
     });
     // If login fails (401), try register
     if (r.status === 401) {
-      if (!name) {
-        if (nameField.style.display === 'none') {
-          nameField.style.display = 'block';
-          return document.getElementById('login-error').textContent = 'Account not found. Enter your name above to register a new one.';
-        }
-        return document.getElementById('login-error').textContent = 'First time? Enter your name to register';
-      }
       r = await fetch(API + '/auth/register', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({name, phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role:'client'})
+        body: JSON.stringify({name:'User', phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role:'client'})
       });
     }
     const d = await r.json();
