@@ -129,12 +129,19 @@ async function login() {
   const name = document.getElementById('login-name').value;
   const login = document.getElementById('login-id').value;
   const password = document.getElementById('login-pass').value;
+  const nameField = document.getElementById('login-name');
   document.getElementById('login-error').textContent = '';
   if (!login) return document.getElementById('login-error').textContent = 'Enter phone or email';
   try {
     let r = await fetch(API+'/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password})});
     if (r.status === 401) {
-      if (!name) return document.getElementById('login-error').textContent = 'First time? Enter your name to register';
+      if (!name) {
+        if (nameField.style.display === 'none') {
+          nameField.style.display = 'block';
+          return document.getElementById('login-error').textContent = 'Account not found. Enter your name above to register a new one.';
+        }
+        return document.getElementById('login-error').textContent = 'First time? Enter your name to register';
+      }
       r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role:'client'})});
     }
     const d = await r.json();
