@@ -125,6 +125,7 @@ let user = null;
 
 let map = null, pickupMarker = null, dropoffMarker = null, routeLine = null;
 let pickupCoords = null, dropoffCoords = null;
+let driverMarkers = [], driverTimer = null, locInterval = null;
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -164,6 +165,7 @@ async function login() {
     token = d.token; user = d.user;
     document.getElementById('home-name').textContent = 'Hi, ' + user.name;
     showScreen('home');
+    startLocationTracking();
   } catch(e) {
     document.getElementById('login-error').textContent = 'Server offline: ' + e.message;
   }
@@ -245,6 +247,32 @@ function initMap() {
   if (!map) { map = L.map('map').setView([-26.2, 28.0], 10);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map); }
   setTimeout(() => map.invalidateSize(), 400);
+  loadDrivers();
+  if (driverTimer) clearInterval(driverTimer);
+  driverTimer = setInterval(loadDrivers, 15000); // poll drivers every 15s
+}
+
+async function loadDrivers() {
+  if (!map || !token) return;
+  try {
+    const drivers = await api('/location/drivers');
+    driverMarkers.forEach(m => map.removeLayer(m));
+    driverMarkers = [];
+    drivers.forEach(d => {
+      const m = L.marker([d.lat, d.lng], {icon: L.divIcon({className:'',html:'<div style="background:#4ade80;width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 8px rgba(74,222,128,.5)"></div>',iconSize:[12,12],iconAnchor:[6,6]})}).addTo(map).bindPopup('🚗 <b>'+d.name+'</b>');
+      driverMarkers.push(m);
+    });
+  } catch(e) {}
+}
+
+function startLocationTracking() {
+  if (!navigator.geolocation) return;
+  const send = () => navigator.geolocation.getCurrentPosition(async pos => {
+    try { await fetch(API+'/location', {method:'PUT', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({lat:pos.coords.latitude,lng:pos.coords.longitude})}); } catch(e) {}
+  }, () => {}, {enableHighAccuracy:true,timeout:15000});
+  send();
+  if (locInterval) clearInterval(locInterval);
+  locInterval = setInterval(send, 30000);
 }
 
 function getLocation() {

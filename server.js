@@ -22,6 +22,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS tokens (
     token TEXT PRIMARY KEY, userId TEXT
   );
+  CREATE TABLE IF NOT EXISTS locations (
+    userId TEXT PRIMARY KEY, lat REAL, lng REAL, updated TEXT
+  );
 `);
 
 // ponytail: login with phone or email
@@ -39,6 +42,9 @@ const getAllRides = db.prepare('SELECT * FROM rides ORDER BY created DESC');
 const getClientRides = db.prepare('SELECT * FROM rides WHERE clientId=? ORDER BY created DESC');
 const getDriverRides = db.prepare('SELECT * FROM rides WHERE driverId=? OR (status=? AND driverId IS NULL) ORDER BY created DESC');
 const getAllUsers = db.prepare('SELECT id,name,phone,role,created FROM users');
+const upsertLocation = db.prepare('INSERT OR REPLACE INTO locations (userId,lat,lng,updated) VALUES (?,?,?,?)');
+const getLocation = db.prepare('SELECT * FROM locations WHERE userId=?');
+const getOnlineDrivers = db.prepare("SELECT l.userId,u.name,l.lat,l.lng,l.updated FROM locations l JOIN users u ON l.userId=u.id WHERE u.role='driver' AND l.updated > ?");
 
 // --- Auth: login with phone or email ---
 
@@ -74,6 +80,27 @@ app.put('/api/auth/forgot', (req, res) => {
   if (!user) return res.status(404).json({ error: 'account not found' });
   db.prepare('UPDATE users SET password=? WHERE id=?').run(password, user.id);
   res.json({ ok: true });
+});
+
+// --- Location sharing ---
+
+app.put('/api/location', auth, (req, res) => {
+  const { lat, lng } = req.body;
+  if (lat == null || lng == null) return res.status(400).json({ error: 'lat and lng required' });
+  upsertLocation.run(req.user.id, lat, lng, new Date().toISOString());
+  res.json({ ok: true });
+});
+
+app.get('/api/location/drivers', auth, (req, res) => {
+  // drivers who updated location in last 2 minutes
+  const cutoff = new Date(Date.now() - 120000).toISOString();
+  res.json(getOnlineDrivers.all(cutoff));
+});
+
+app.get('/api/location/:userId', auth, (req, res) => {
+  const loc = getLocation.get(req.params.userId);
+  if (!loc) return res.status(404).json({ error: 'no location' });
+  res.json(loc);
 });
 
 function auth(req, res, next) {

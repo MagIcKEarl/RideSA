@@ -115,7 +115,7 @@ h1 span{color:#5fd0ff}
 
 <script>
 const API = window.location.origin + '/api';
-let token = null, user = null, online = false, pollTimer = null;
+let token = null, user = null, online = false, pollTimer = null, locInterval = null, clientLocInterval = null;
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -164,7 +164,21 @@ function toggleOnline() {
   online = !online;
   document.getElementById('online-dot').className = 'dot' + (online ? '' : ' offline');
   document.getElementById('online-label').textContent = online ? 'Online' : 'Offline';
-  if (online) loadHome();
+  if (online) { loadHome(); startLocationTracking(); }
+  else stopLocationTracking();
+}
+
+function startLocationTracking() {
+  if (!navigator.geolocation) return;
+  const send = () => navigator.geolocation.getCurrentPosition(async pos => {
+    try { await fetch(API+'/location', {method:'PUT', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({lat:pos.coords.latitude,lng:pos.coords.longitude})}); } catch(e) {}
+  }, () => {}, {enableHighAccuracy:true,timeout:15000});
+  send();
+  if (locInterval) clearInterval(locInterval);
+  locInterval = setInterval(send, 30000);
+}
+function stopLocationTracking() {
+  if (locInterval) { clearInterval(locInterval); locInterval = null; }
 }
 
 async function loadHome() {
@@ -185,9 +199,10 @@ async function loadHome() {
         <div class="fare">R${active.fare || '—'}</div>
         <div id="driver-map"></div>
         <div id="driver-directions" class="directions" style="display:none"><div class="step">Loading route...</div></div>
+        <div style="text-align:center;font-size:12px;color:#90a0b0;margin-top:4px">Client location updates live</div>
         <button class="btn complete" onclick="completeRide('${active.id}')">Complete Ride</button>
       </div>`;
-    setTimeout(() => loadDriverRoute(active.pickup, active.dropoff), 300);
+    setTimeout(() => loadDriverRoute(active.pickup, active.dropoff, active.clientId), 300);
   }
 
   document.getElementById('available-rides').innerHTML = available.length
@@ -252,7 +267,7 @@ async function completeRide(id) {
   } catch(e) { alert('Failed: ' + e.message); }
 }
 
-async function loadDriverRoute(pickup, dropoff) {
+async function loadDriverRoute(pickup, dropoff, clientId) {
   let dMap = L.map('driver-map').setView([-26.2, 28.0], 10);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(dMap);
   setTimeout(() => dMap.invalidateSize(), 400);
@@ -268,6 +283,22 @@ async function loadDriverRoute(pickup, dropoff) {
   // Markers
   L.marker(pLatLng, {icon: L.divIcon({className:'',html:'<div style="background:#5fd0ff;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(dMap).bindPopup('Pickup: '+pickup).openPopup();
   L.marker(dLatLng, {icon: L.divIcon({className:'',html:'<div style="background:#f87171;width:14px;height:14px;border-radius:50%;border:3px solid #fff"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(dMap).bindPopup('Dropoff: '+dropoff);
+  // Client marker
+  let clientMarker = null;
+  async function updateClientMarker() {
+    if (!clientId) return;
+    try {
+      const loc = await api('/location/'+clientId);
+      if (loc.error) return;
+      if (clientMarker) dMap.removeLayer(clientMarker);
+      clientMarker = L.marker([loc.lat, loc.lng], {icon: L.divIcon({className:'',html:'<div style="background:#fbbf24;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 12px rgba(251,191,36,.6)"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(dMap).bindPopup('Client (live)');
+      dMap.fitBounds([pLatLng, dLatLng, [loc.lat, loc.lng]], {padding:[30,30]});
+    } catch(e) {}
+  }
+  updateClientMarker();
+  if (clientLocInterval) clearInterval(clientLocInterval);
+  clientLocInterval = setInterval(updateClientMarker, 10000); // poll client every 10s
+
   dMap.fitBounds([pLatLng, dLatLng], {padding:[30,30]});
   // Get route + directions
   const rr = await fetch('https://router.project-osrm.org/route/v1/driving/'+pLatLng[1]+','+pLatLng[0]+';'+dLatLng[1]+','+dLatLng[0]+'?steps=true&overview=full&geometries=geojson');
