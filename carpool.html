@@ -239,12 +239,11 @@ async function register() {
 function afterLogin() {
   document.getElementById('home-name').textContent = 'Hi, '+user.name;
   document.getElementById('results').textContent = '';
-  const isDriver = user.role === 'driver' || user.role === 'admin';
   document.getElementById('tabs').innerHTML = `
     <div class="tab active" data-tab="browse" onclick="switchTab('browse')">Browse Trips</div>
     <div class="tab" data-tab="bookings" onclick="switchTab('bookings')">My Bookings</div>
-    ${isDriver?'<div class="tab" data-tab="mytrips" onclick="switchTab(\'mytrips\')">My Trips</div>':''}
-    ${isDriver?'<div class="tab" data-tab="schedule" onclick="switchTab(\'schedule\')">+ Schedule</div>':''}
+    <div class="tab" data-tab="mytrips" onclick="switchTab('mytrips')">My Trips</div>
+    <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">+ Schedule</div>
   `;
   showScreen('home');
 }
