@@ -54,6 +54,14 @@ tr:hover{background:#111820}
   <input id="admin-pass" type="password" placeholder="Password">
   <div class="error" id="login-error"></div>
   <button class="btn" onclick="login()">Login</button>
+  <div class="link" onclick="showForgot()">Forgot password?</div>
+  <div id="forgot-form" style="display:none;width:300px">
+    <input id="forgot-id" placeholder="Phone or email">
+    <input id="forgot-pass" type="password" placeholder="New password">
+    <button class="btn" onclick="forgotPassword()">Reset Password</button>
+    <div class="error" id="forgot-error"></div>
+    <div class="link" onclick="hideForgot()">← Back to login</div>
+  </div>
 </div>
 
 <div id="app" style="display:none">
@@ -190,6 +198,27 @@ function logout() {
   token = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
+}
+
+function showForgot() {
+  document.querySelectorAll('#login-screen input, #login-screen .error, #login-screen h1, #login-screen p, #login-screen .btn').forEach(e => e.style.display = 'none');
+  document.getElementById('forgot-form').style.display = 'block';
+}
+function hideForgot() {
+  document.querySelectorAll('#login-screen input, #login-screen .error, #login-screen h1, #login-screen p, #login-screen .btn').forEach(e => e.style.display = '');
+  document.getElementById('forgot-form').style.display = 'none';
+}
+async function forgotPassword() {
+  const login = document.getElementById('forgot-id').value;
+  const password = document.getElementById('forgot-pass').value;
+  document.getElementById('forgot-error').textContent = '';
+  try {
+    const r = await fetch(API+'/auth/forgot', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login, password})});
+    const d = await r.json();
+    if (d.error) return document.getElementById('forgot-error').textContent = d.error;
+    alert('Password updated! Sign in with your new password.');
+    hideForgot();
+  } catch(e) { document.getElementById('forgot-error').textContent = 'Server error: '+e.message; }
 }
 </script>
 </body>

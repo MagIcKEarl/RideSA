@@ -65,6 +65,17 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ user: { id: user.id, name: user.name, phone: user.phone, email: user.email, role: user.role }, token });
 });
 
+// ponytail: forgot password — knows phone/email = you. Add email reset token when SMTP exists.
+app.put('/api/auth/forgot', (req, res) => {
+  const { login, password } = req.body;
+  if (!login || !password) return res.status(400).json({ error: 'login and new password required' });
+  if (password.length < 4) return res.status(400).json({ error: 'password too short' });
+  const user = login.includes('@') ? findByEmail.get(login) : findByPhone.get(login);
+  if (!user) return res.status(404).json({ error: 'account not found' });
+  db.prepare('UPDATE users SET password=? WHERE id=?').run(password, user.id);
+  res.json({ ok: true });
+});
+
 function auth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   const t = token ? findToken.get(token) : null;
