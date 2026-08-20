@@ -25,6 +25,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS locations (
     userId TEXT PRIMARY KEY, lat REAL, lng REAL, updated TEXT
   );
+  CREATE TABLE IF NOT EXISTS trips (
+    id TEXT PRIMARY KEY, driverId TEXT, pickup TEXT, dropoff TEXT, departure TEXT,
+    price REAL, max_seats INTEGER, status TEXT DEFAULT 'scheduled', created TEXT
+  );
+  CREATE TABLE IF NOT EXISTS bookings (
+    id TEXT PRIMARY KEY, tripId TEXT, riderId TEXT, status TEXT DEFAULT 'paid', created TEXT
+  );
 `);
 
 // ponytail: login with phone or email
@@ -45,6 +52,19 @@ const getAllUsers = db.prepare('SELECT id,name,phone,role,created FROM users');
 const upsertLocation = db.prepare('INSERT OR REPLACE INTO locations (userId,lat,lng,updated) VALUES (?,?,?,?)');
 const getLocation = db.prepare('SELECT * FROM locations WHERE userId=?');
 const getOnlineDrivers = db.prepare("SELECT l.userId,u.name,l.lat,l.lng,l.updated FROM locations l JOIN users u ON l.userId=u.id WHERE u.role='driver' AND l.updated > ?");
+
+// ponytail: carpool — trips + bookings. Add payment gateway when real money flows.
+const insertTrip = db.prepare('INSERT INTO trips (id,driverId,pickup,dropoff,departure,price,max_seats,created) VALUES (?,?,?,?,?,?,?,?)');
+const getTrip = db.prepare('SELECT * FROM trips WHERE id=?');
+const getUpcomingTrips = db.prepare("SELECT t.*, u.name as driverName FROM trips t JOIN users u ON t.driverId=u.id WHERE t.departure > ? AND t.status='scheduled' ORDER BY t.departure");
+const getDriverTrips = db.prepare('SELECT * FROM trips WHERE driverId=? ORDER BY departure DESC');
+const updateTripStatus = db.prepare('UPDATE trips SET status=? WHERE id=?');
+const insertBooking = db.prepare('INSERT INTO bookings (id,tripId,riderId,created) VALUES (?,?,?,?)');
+const getBookings = db.prepare('SELECT b.*, u.name as riderName FROM bookings b JOIN users u ON b.riderId=u.id WHERE b.tripId=?');
+const getMyBookings = db.prepare('SELECT b.*, t.pickup, t.dropoff, t.departure, t.price, u.name as driverName FROM bookings b JOIN trips t ON b.tripId=t.id JOIN users u ON t.driverId=u.id WHERE b.riderId=? ORDER BY t.departure DESC');
+const getRiderCount = db.prepare('SELECT COUNT(*) as cnt FROM bookings WHERE tripId=? AND status=?');
+const updateBooking = db.prepare('UPDATE bookings SET status=? WHERE id=?');
+const getBooking = db.prepare('SELECT * FROM bookings WHERE id=?');
 
 // --- Auth: login with phone or email ---
 
@@ -177,6 +197,77 @@ app.get('/api/admin/rides', auth, (req, res) => {
   res.json(getAllRides.all());
 });
 
+// --- Carpool ---
+
+app.post('/api/carpool/trips', auth, (req, res) => {
+  const { pickup, dropoff, departure, price, max_seats } = req.body;
+  if (!pickup || !dropoff || !departure || !price || !max_seats) return res.status(400).json({ error: 'pickup, dropoff, departure, price, max_seats required' });
+  const id = uuid();
+  insertTrip.run(id, req.user.id, pickup, dropoff, departure, price, max_seats, new Date().toISOString());
+  res.status(201).json(getTrip.get(id));
+});
+
+app.get('/api/carpool/trips', auth, (req, res) => {
+  let list;
+  if (req.user.role === 'driver' && req.query.mine === '1') list = getDriverTrips.all(req.user.id);
+  else if (req.user.role === 'driver' && req.query.mine === '1') list = getDriverTrips.all(req.user.id);
+  else {
+    const now = new Date().toISOString();
+    list = getUpcomingTrips.all(now);
+    // attach booking counts
+    list = list.map(t => { t.booked = getRiderCount.get(t.id, 'paid').cnt; return t; });
+  }
+  res.json(list);
+});
+
+app.get('/api/carpool/my-bookings', auth, (req, res) => {
+  res.json(getMyBookings.all(req.user.id));
+});
+
+app.get('/api/carpool/trips/:id', auth, (req, res) => {
+  const trip = getTrip.get(req.params.id);
+  if (!trip) return res.status(404).json({ error: 'not found' });
+  trip.bookings = getBookings.all(req.params.id);
+  trip.booked = trip.bookings.filter(b => b.status === 'paid').length;
+  res.json(trip);
+});
+
+app.post('/api/carpool/trips/:id/book', auth, (req, res) => {
+  const trip = getTrip.get(req.params.id);
+  if (!trip) return res.status(404).json({ error: 'not found' });
+  if (trip.status !== 'scheduled') return res.status(400).json({ error: 'trip not available' });
+  const booked = getRiderCount.get(req.params.id, 'paid').cnt;
+  if (booked.cnt >= trip.max_seats) return res.status(400).json({ error: 'trip full' });
+  const existing = getMyBookings.all(req.user.id).find(b => b.tripId === req.params.id && b.status === 'paid');
+  if (existing) return res.status(400).json({ error: 'already booked' });
+  // ponytail: credits not implemented — free booking. Add payment when real money flows.
+  const id = uuid();
+  insertBooking.run(id, req.params.id, req.user.id, new Date().toISOString());
+  res.status(201).json(getBooking.get(id));
+});
+
+app.put('/api/carpool/bookings/:id/board', auth, (req, res) => {
+  const b = getBooking.get(req.params.id);
+  if (!b) return res.status(404).json({ error: 'not found' });
+  const trip = getTrip.get(b.tripId);
+  if (trip.driverId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'not your trip' });
+  if (b.status !== 'paid') return res.status(400).json({ error: 'already boarded or missed' });
+  updateBooking.run('boarded', req.params.id);
+  res.json(getBooking.get(req.params.id));
+});
+
+app.put('/api/carpool/trips/:id/depart', auth, (req, res) => {
+  const trip = getTrip.get(req.params.id);
+  if (!trip) return res.status(404).json({ error: 'not found' });
+  if (trip.driverId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'not your trip' });
+  if (trip.status !== 'scheduled') return res.status(400).json({ error: 'already departed' });
+  // Mark all unboarded paid bookings as missed
+  const paid = getBookings.all(req.params.id).filter(b => b.status === 'paid');
+  paid.forEach(b => updateBooking.run('missed', b.id));
+  updateTripStatus.run('departed', req.params.id);
+  res.json(getTrip.get(req.params.id));
+});
+
 // --- Static files ---
 
 app.get('/manifest.json', (req, res) => res.sendFile(__dirname + '/manifest.json'));
@@ -184,6 +275,7 @@ app.get('/sw.js', (req, res) => res.sendFile(__dirname + '/sw.js'));
 app.get('/admin', (req, res) => res.sendFile(__dirname + '/admin.html'));
 app.get('/client', (req, res) => res.sendFile(__dirname + '/client.html'));
 app.get('/driver', (req, res) => res.sendFile(__dirname + '/driver.html'));
+app.get('/carpool', (req, res) => res.sendFile(__dirname + '/carpool.html'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`RideSA API running on :${PORT}`));
