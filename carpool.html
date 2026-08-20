@@ -32,27 +32,25 @@ h1 span{color:#5fd0ff}
 .error{color:#f87171;font-size:13px;margin-bottom:8px}
 .card{background:#111820;border:1px solid #1e2a36;border-radius:12px;padding:16px;margin-bottom:12px}
 .card .title{font-weight:600;color:#fff;margin-bottom:4px}
-.card .meta{font-size:13px;color:#90a0b0}
-.card .price{font-size:20px;font-weight:700;color:#4ade80;margin-top:6px}
-.top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-.top-bar h1{font-size:18px;margin:0}
-.tabs{display:flex;gap:4px;margin-bottom:16px;overflow-x:auto}
-.tab{padding:8px 14px;background:#111820;border:1px solid #1e2a36;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap;color:#90a0b0}
-.tab.active{background:#1e2a36;border-color:#5fd0ff;color:#5fd0ff}
-.badge{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:600}
-.badge.scheduled{background:#1a3a5a;color:#5fd0ff}
+.card .meta{color:#90a0b0;font-size:13px}
+.badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
+.badge.scheduled{background:#1a2a3a;color:#5fd0ff}
 .badge.departed{background:#3a3a1a;color:#fbbf24}
 .badge.completed{background:#1a3a2a;color:#4ade80}
 .badge.cancelled{background:#3a1a1a;color:#f87171}
+.badge.panicked{background:#3a0000;color:#ff4444;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:0.5}}
 .badge.paid{background:#1a3a2a;color:#4ade80}
-.badge.boarded{background:#3a3a1a;color:#fbbf24}
+.badge.boarded{background:#1a2a3a;color:#5fd0ff}
 .badge.missed{background:#3a1a1a;color:#f87171}
-.badge.full{background:#3a3a1a;color:#f87171}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.rider-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #1a2430}
-.rider-item:last-child{border:none}
-label{font-size:12px;text-transform:uppercase;color:#7090a0;letter-spacing:1px;margin-bottom:4px;display:block}
+.top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.tabs{display:flex;gap:4px;margin-bottom:16px;overflow-x:auto}
+.tab{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:#90a0b0;white-space:nowrap}
+.tab.active{background:#1e2a36;color:#fff}
+.tab-content{display:none}
+.tab-content.active{display:block}
 .empty{color:#607080;text-align:center;padding:30px 0;font-size:14px}
+.rider-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0}
 </style>
 </head>
 <body>
@@ -67,7 +65,20 @@ label{font-size:12px;text-transform:uppercase;color:#7090a0;letter-spacing:1px;m
     <input id="login-pass" placeholder="Password" type="password">
     <div class="error" id="login-error"></div>
     <button class="btn" onclick="login()">Get Started</button>
-    <div class="link" onclick="showForgot()" style="margin-top:4px">Forgot password?</div>
+    <div class="link" onclick="showRegister()" style="margin-top:4px">New here? Sign up for Car Pool</div>
+    <div class="link" onclick="showForgot()">Forgot password?</div>
+    <div id="register-form" style="display:none;width:100%;margin-top:12px">
+      <input id="reg-name" placeholder="Your name">
+      <input id="reg-id" placeholder="Phone number or email">
+      <input id="reg-pass" placeholder="Password" type="password">
+      <select id="reg-role" style="margin-bottom:12px">
+        <option value="rider">Rider — book seats</option>
+        <option value="driver">Driver — schedule trips</option>
+      </select>
+      <button class="btn" onclick="register()">Create Account</button>
+      <div class="error" id="reg-error"></div>
+      <div class="link" onclick="hideRegister()">← Already have an account? Sign in</div>
+    </div>
     <div id="forgot-form" style="display:none;width:100%;margin-top:12px">
       <input id="forgot-id" placeholder="Phone or email">
       <input id="forgot-pass" type="password" placeholder="New password">
@@ -82,42 +93,30 @@ label{font-size:12px;text-transform:uppercase;color:#7090a0;letter-spacing:1px;m
 <div class="screen" id="screen-home">
   <div class="top-bar">
     <h1><span>Car</span> Pool</h1>
-    <span style="color:#90a0b0;font-size:14px" id="home-name"></span>
-  </div>
-  <div class="tabs" id="tabs">
-    <div class="tab active" data-tab="browse" onclick="switchTab('browse')">Browse Trips</div>
-    <div class="tab" data-tab="bookings" onclick="switchTab('bookings')">My Bookings</div>
-    <div class="tab" data-tab="mytrips" onclick="switchTab('mytrips')">My Trips</div>
-    <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">+ Schedule</div>
-  </div>
-
-  <div id="tab-browse"><div id="browse-list"></div></div>
-  <div id="tab-bookings" style="display:none"><div id="bookings-list"></div></div>
-  <div id="tab-mytrips" style="display:none"><div id="mytrips-list"></div></div>
-  <div id="tab-schedule" style="display:none">
-    <label>Pickup location</label>
-    <input id="s-pickup" placeholder="e.g. 33 East Street, Oakdene">
-    <label>Drop-off location</label>
-    <input id="s-dropoff" placeholder="e.g. 223 Bosworth Street, Alrode">
-    <label>Departure date & time</label>
-    <input id="s-departure" type="datetime-local">
-    <div class="grid2">
-      <div><label>Price per seat (R)</label><input id="s-price" type="number" min="1" placeholder="e.g. 50"></div>
-      <div><label>Seats available</label><input id="s-seats" type="number" min="1" max="8" placeholder="e.g. 3"></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="home-name" style="font-size:14px;color:#90a0b0"></span>
+      <div class="link" onclick="logout()" style="margin:0;font-size:13px">Logout</div>
     </div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div id="results"></div>
+  <div id="tab-browse" class="tab-content active"><div id="trips-list"></div></div>
+  <div id="tab-bookings" class="tab-content"><div id="bookings-list"></div></div>
+  <div id="tab-mytrips" class="tab-content"><div id="mytrips-list"></div></div>
+  <div id="tab-schedule" class="tab-content">
+    <input id="s-pickup" placeholder="Pickup location">
+    <input id="s-dropoff" placeholder="Dropoff location">
+    <input id="s-departure" type="datetime-local" placeholder="Departure time">
+    <input id="s-price" placeholder="Price per seat (R)" type="number">
+    <input id="s-seats" placeholder="Max seats" type="number">
     <div class="error" id="schedule-error"></div>
     <button class="btn" onclick="scheduleTrip()">Schedule Trip</button>
-  </div>
-
-  <div style="margin-top:auto;padding-top:20px;text-align:center">
-    <div class="link" style="color:#f87171" onclick="logout()">Logout</div>
   </div>
 </div>
 
 <script>
 const API = window.location.origin + '/api';
 let token = null, user = null;
-
 
 async function login() {
   const login = document.getElementById('login-id').value;
@@ -127,22 +126,68 @@ async function login() {
   try {
     let r = await fetch(API+'/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password})});
     if (r.status === 401) {
-      r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:'User', phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role:'client'})});
+      r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:'User', phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role:'rider'})});
     }
     const d = await r.json();
     if (d.error) return document.getElementById('login-error').textContent = d.error;
     token = d.token; user = d.user;
-    document.getElementById('home-name').textContent = 'Hi, '+user.name;
-    document.getElementById('tabs').innerHTML = `
-      <div class="tab active" data-tab="browse" onclick="switchTab('browse')">Browse Trips</div>
-      <div class="tab" data-tab="bookings" onclick="switchTab('bookings')">My Bookings</div>
-      ${user.role==='driver'||user.role==='admin'?'<div class="tab" data-tab="mytrips" onclick="switchTab(\'mytrips\')">My Trips</div>':''}
-      ${user.role==='driver'||user.role==='admin'?'<div class="tab" data-tab="schedule" onclick="switchTab(\'schedule\')">+ Schedule</div>':''}
-    `;
-    showScreen('home');
+    afterLogin();
   } catch(e) {
     document.getElementById('login-error').textContent = 'Server offline: '+e.message;
   }
+}
+
+function showRegister() {
+  document.querySelector('#screen-login h1').style.display = 'none';
+  document.querySelector('#screen-login p').style.display = 'none';
+  document.querySelectorAll('#screen-login p').forEach(e => e.style.display = 'none');
+  document.getElementById('login-id').style.display = 'none';
+  document.getElementById('login-pass').style.display = 'none';
+  document.querySelector('#screen-login .btn').style.display = 'none';
+  document.querySelectorAll('#screen-login .link').forEach(e => e.style.display = 'none');
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('register-form').style.display = 'block';
+  document.getElementById('register-form').querySelector('.link').style.display = '';
+}
+function hideRegister() {
+  document.querySelector('#screen-login h1').style.display = '';
+  document.querySelectorAll('#screen-login p').forEach(e => e.style.display = '');
+  document.getElementById('login-id').style.display = '';
+  document.getElementById('login-pass').style.display = '';
+  document.querySelector('#screen-login .btn').style.display = '';
+  document.querySelectorAll('#screen-login .link').forEach(e => e.style.display = '');
+  document.getElementById('login-error').style.display = '';
+  document.getElementById('register-form').style.display = 'none';
+}
+async function register() {
+  const name = document.getElementById('reg-name').value;
+  const login = document.getElementById('reg-id').value;
+  const password = document.getElementById('reg-pass').value;
+  const role = document.getElementById('reg-role').value;
+  document.getElementById('reg-error').textContent = '';
+  if (!name || !login || !password) return document.getElementById('reg-error').textContent = 'Fill in all fields';
+  try {
+    const r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name, phone: login.includes('@')?'':login, email: login.includes('@')?login:'', password, role})});
+    const d = await r.json();
+    if (d.error) return document.getElementById('reg-error').textContent = d.error;
+    token = d.token; user = d.user;
+    afterLogin();
+  } catch(e) {
+    document.getElementById('reg-error').textContent = 'Failed: '+e.message;
+  }
+}
+function afterLogin() {
+  document.getElementById('home-name').textContent = 'Hi, '+user.name;
+  document.getElementById('results').textContent = '';
+  const isDriver = user.role === 'driver' || user.role === 'admin';
+  document.getElementById('tabs').innerHTML = `
+    <div class="tab active" data-tab="browse" onclick="switchTab('browse')">Browse Trips</div>
+    <div class="tab" data-tab="bookings" onclick="switchTab('bookings')">My Bookings</div>
+    ${isDriver?'<div class="tab" data-tab="mytrips" onclick="switchTab(\'mytrips\')">My Trips</div>':''}
+    ${isDriver?'<div class="tab" data-tab="schedule" onclick="switchTab(\'schedule\')">+ Schedule</div>':''}
+  `;
+  showScreen('home');
 }
 
 function showScreen(id) {
@@ -153,7 +198,7 @@ function showScreen(id) {
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+  document.querySelector('.tab[data-tab="'+name+'"]').classList.add('active');
   document.querySelectorAll('[id^="tab-"]').forEach(t => t.style.display = 'none');
   document.getElementById('tab-'+name).style.display = 'block';
   if (name === 'browse') loadTrips();
@@ -165,18 +210,24 @@ async function api(path) { const r = await fetch(API+path, {headers:{'Authorizat
 
 async function loadTrips() {
   const trips = await api('/carpool/trips');
-  document.getElementById('browse-list').innerHTML = trips.length
-    ? trips.map(t => {
-        const full = t.booked >= t.max_seats;
-        return `<div class="card">
-          <div class="title">${t.pickup} → ${t.dropoff}</div>
-          <div class="meta">🚗 ${t.driverName} · ${new Date(t.departure).toLocaleString('en-ZA')}</div>
-          <div class="meta">${t.booked}/${t.max_seats} seats booked</div>
-          <div class="price">R${t.price} per seat</div>
-          <div style="display:flex;gap:8px;margin-top:10px">${full?'<span class="badge full">Full</span>':'<button class="btn green small" onclick="bookSeat(\\''+t.id+'\\')">Book Seat</button>'}</div>
-        </div>`;
-      }).join('')
-    : '<div class="empty">No upcoming trips scheduled. Be the first driver to schedule one!</div>';
+  document.getElementById('trips-list').innerHTML = trips.length
+    ? trips.map(t => `<div class="card">
+        <div class="title">${t.pickup} → ${t.dropoff}</div>
+        <div class="meta">🚗 ${t.driverName} · 📅 ${new Date(t.departure).toLocaleString('en-ZA')}</div>
+        <div class="meta" style="margin-top:4px">R${t.price}/seat · ${t.booked}/${t.max_seats} seats filled · <span class="badge ${t.status}">${t.status}</span></div>
+        ${t.status==='scheduled' && t.booked < t.max_seats ? `<button class="btn small green" onclick="bookTrip('${t.id}')">Book Seat - R${t.price}</button>` : ''}
+      </div>`).join('')
+    : '<div class="empty">No upcoming trips. Be the first to schedule one!</div>';
+}
+
+async function bookTrip(id) {
+  try {
+    const r = await fetch(API+'/carpool/trips/'+id+'/book', {method:'POST', headers:{'Authorization':'Bearer '+token}});
+    const d = await r.json();
+    if (d.error) return alert(d.error);
+    alert('Seat booked! Pay the driver on boarding.');
+    loadTrips();
+  } catch(e) { alert('Failed: '+e.message); }
 }
 
 async function loadMyBookings() {
@@ -201,10 +252,10 @@ async function loadMyTrips() {
           <div class="meta">📅 ${new Date(t.departure).toLocaleString('en-ZA')} · <span class="badge ${t.status}">${t.status}</span></div>
           <div class="meta">R${t.price}/seat · ${td.booked}/${t.max_seats} booked</div>
           ${td.bookings && td.bookings.length ? `<div style="margin-top:8px;border-top:1px solid #1e2a36;padding-top:8px">${td.bookings.map(b => `<div class="rider-item"><span>${b.riderName}</span><span class="badge ${b.status}">${b.status} ${b.status==='paid'?'<button class="btn small green" onclick="boardRider(\''+b.id+'\')">Board</button>':''}</span></div>`).join('')}</div>` : ''}
-                    <div style="display:flex;gap:8px;margin-top:8px">
-                      ${t.status==='scheduled' ? `<button class="btn orange small" onclick="departTrip('${t.id}')">Depart Now</button>` : ''}
-                      ${t.status==='scheduled'||t.status==='departed' ? `<button class="btn small" style="background:#3a1a1a;color:#f87171;border:2px solid #f87171" onclick="panicTrip('${t.id}')">🚨 Panic</button>` : ''}
-                    </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            ${t.status==='scheduled' ? `<button class="btn orange small" onclick="departTrip('${t.id}')">Depart Now</button>` : ''}
+            ${t.status==='scheduled'||t.status==='departed' ? `<button class="btn small" style="background:#3a1a1a;color:#f87171;border:2px solid #f87171" onclick="panicTrip('${t.id}')">🚨 Panic</button>` : ''}
+          </div>
         </div>`;
       })).then(r => r.join(''))
     : '<div class="empty">No trips scheduled. Schedule your first trip!</div>';
@@ -228,17 +279,6 @@ async function scheduleTrip() {
     document.getElementById('s-seats').value='';
     switchTab('mytrips');
   } catch(e) { document.getElementById('schedule-error').textContent = 'Failed: '+e.message; }
-}
-
-async function bookSeat(id) {
-  if (!confirm('Book a seat on this trip?')) return;
-  try {
-    const r = await fetch(API+'/carpool/trips/'+id+'/book', {method:'POST', headers:{'Authorization':'Bearer '+token}});
-    const d = await r.json();
-    if (d.error) return alert(d.error);
-    alert('Seat booked! Check "My Bookings" for details.');
-    loadTrips();
-  } catch(e) { alert('Failed: '+e.message); }
 }
 
 async function boardRider(id) {
@@ -286,11 +326,14 @@ async function forgotPassword() {
   const login = document.getElementById('forgot-id').value;
   const password = document.getElementById('forgot-pass').value;
   document.getElementById('forgot-error').textContent = '';
+  if (!login || !password) return document.getElementById('forgot-error').textContent = 'Fill in both fields';
   try {
     const r = await fetch(API+'/auth/forgot', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password})});
-    const d = await r.json(); if (d.error) return document.getElementById('forgot-error').textContent = d.error;
-    alert('Password updated!'); hideForgot();
-  } catch(e) { document.getElementById('forgot-error').textContent = 'Server error: '+e.message; }
+    const d = await r.json();
+    if (d.error) return document.getElementById('forgot-error').textContent = d.error;
+    alert('Password reset! Sign in with your new password.');
+    hideForgot();
+  } catch(e) { document.getElementById('forgot-error').textContent = 'Failed: '+e.message; }
 }
 
 function logout() {
