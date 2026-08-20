@@ -152,18 +152,23 @@ async function loadDashboard() {
   `;
   loadRides(rides);
   loadUsers(clients, drivers);
-  // Panic alert
-  const panicked = rides.filter(r => r.status === 'panicked');
-  const existing = document.getElementById('panic-alert');
-  if (panicked.length) {
-    if (!existing) {
-      const div = document.createElement('div');
-      div.id = 'panic-alert';
-      div.style.cssText = 'background:#3a1a1a;border:2px solid #f87171;border-radius:10px;padding:16px;margin-bottom:20px';
-      div.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:24px">🚨</span><div><div style="font-weight:700;color:#f87171;font-size:16px">EMERGENCY — '+panicked.length+' ride(s) need attention</div><div style="color:#e0b0b0;font-size:13px">'+panicked.map(r => r.id.slice(0,8)+' — '+r.pickup+' → '+r.dropoff).join('<br>')+'</div></div></div>';
-      document.getElementById('stats').after(div);
-    }
-  } else if (existing) existing.remove();
+  // Panic alert — rides + carpool trips
+  api('/carpool/admin/trips').then(trips => {
+    const panicked = [
+      ...rides.filter(r => r.status === 'panicked').map(r => r.id.slice(0,8)+' — '+r.pickup+' → '+r.dropoff+' (ride)'),
+      ...trips.filter(t => t.status === 'panicked').map(t => t.id.slice(0,8)+' — '+t.pickup+' → '+t.dropoff+' (carpool)')
+    ];
+    const existing = document.getElementById('panic-alert');
+    if (panicked.length) {
+      if (!existing) {
+        const div = document.createElement('div');
+        div.id = 'panic-alert';
+        div.style.cssText = 'background:#3a1a1a;border:2px solid #f87171;border-radius:10px;padding:16px;margin-bottom:20px';
+        div.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:24px">🚨</span><div><div style="font-weight:700;color:#f87171;font-size:16px">EMERGENCY — '+panicked.length+' incident(s) need attention</div><div style="color:#e0b0b0;font-size:13px">'+panicked.join('<br>')+'</div></div></div>';
+        document.getElementById('stats').after(div);
+      }
+    } else if (existing) existing.remove();
+  });
 }
 
 function loadRides(rides) {

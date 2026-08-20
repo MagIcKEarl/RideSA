@@ -207,6 +207,12 @@ app.get('/api/admin/rides', auth, (req, res) => {
   res.json(getAllRides.all());
 });
 
+app.get('/api/carpool/admin/trips', auth, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin only' });
+  const trips = db.prepare('SELECT * FROM trips ORDER BY departure DESC').all();
+  res.json(trips);
+});
+
 // --- Carpool ---
 
 app.post('/api/carpool/trips', auth, (req, res) => {
@@ -275,6 +281,17 @@ app.put('/api/carpool/trips/:id/depart', auth, (req, res) => {
   const paid = getBookings.all(req.params.id).filter(b => b.status === 'paid');
   paid.forEach(b => updateBooking.run('missed', b.id));
   updateTripStatus.run('departed', req.params.id);
+  res.json(getTrip.get(req.params.id));
+});
+
+// ponytail: carpool panic — driver, rider in trip, or admin can trigger
+app.put('/api/carpool/trips/:id/panic', auth, (req, res) => {
+  const trip = getTrip.get(req.params.id);
+  if (!trip) return res.status(404).json({ error: 'not found' });
+  const isRider = getBookings.all(req.params.id).some(b => b.riderId === req.user.id && b.status !== 'missed');
+  if (trip.driverId !== req.user.id && !isRider && req.user.role !== 'admin') return res.status(403).json({ error: 'not your trip' });
+  if (trip.status === 'completed' || trip.status === 'cancelled') return res.status(400).json({ error: 'trip already ended' });
+  updateTripStatus.run('panicked', req.params.id);
   res.json(getTrip.get(req.params.id));
 });
 

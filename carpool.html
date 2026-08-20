@@ -186,6 +186,7 @@ async function loadMyBookings() {
         <div class="title">${r.pickup} → ${r.dropoff}</div>
         <div class="meta">🚗 ${r.driverName} · ${new Date(r.departure).toLocaleString('en-ZA')}</div>
         <div class="meta" style="margin-top:4px">R${r.price} · <span class="badge ${r.status}">${r.status}</span></div>
+        ${r.status==='paid'||r.status==='boarded' ? `<button class="btn small" style="background:#3a1a1a;color:#f87171;border:2px solid #f87171;margin-top:8px" onclick="panicTrip('${r.tripId}')">🚨 Panic</button>` : ''}
       </div>`).join('')
     : '<div class="empty">No bookings yet. Browse trips and book a seat!</div>';
 }
@@ -199,10 +200,11 @@ async function loadMyTrips() {
           <div class="title">${t.pickup} → ${t.dropoff}</div>
           <div class="meta">📅 ${new Date(t.departure).toLocaleString('en-ZA')} · <span class="badge ${t.status}">${t.status}</span></div>
           <div class="meta">R${t.price}/seat · ${td.booked}/${t.max_seats} booked</div>
-          ${td.bookings && td.bookings.length ? `<div style="margin-top:8px;border-top:1px solid #1e2a36;padding-top:8px">${td.bookings.map(b => `<div class="rider-item"><span>${b.riderName}</span><span class="badge ${b.status}">${b.status} ${b.status==='paid'?'<button class="btn small green" onclick="boardRider(\\''+b.id+'\\')">Board</button>':''}</span></div>`).join('')}</div>` : ''}
-          <div style="display:flex;gap:8px;margin-top:8px">
-            ${t.status==='scheduled' ? `<button class="btn orange small" onclick="departTrip('${t.id}')">Depart Now</button>` : ''}
-          </div>
+          ${td.bookings && td.bookings.length ? `<div style="margin-top:8px;border-top:1px solid #1e2a36;padding-top:8px">${td.bookings.map(b => `<div class="rider-item"><span>${b.riderName}</span><span class="badge ${b.status}">${b.status} ${b.status==='paid'?'<button class="btn small green" onclick="boardRider(\''+b.id+'\')">Board</button>':''}</span></div>`).join('')}</div>` : ''}
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                      ${t.status==='scheduled' ? `<button class="btn orange small" onclick="departTrip('${t.id}')">Depart Now</button>` : ''}
+                      ${t.status==='scheduled'||t.status==='departed' ? `<button class="btn small" style="background:#3a1a1a;color:#f87171;border:2px solid #f87171" onclick="panicTrip('${t.id}')">🚨 Panic</button>` : ''}
+                    </div>
         </div>`;
       })).then(r => r.join(''))
     : '<div class="empty">No trips scheduled. Schedule your first trip!</div>';
@@ -255,6 +257,18 @@ async function departTrip(id) {
     const d = await r.json();
     if (d.error) return alert(d.error);
     loadMyTrips();
+  } catch(e) { alert('Failed: '+e.message); }
+}
+
+async function panicTrip(id) {
+  if (!confirm('🚨 Trigger emergency alert for this trip? Your location will be shared with admin.')) return;
+  try {
+    const r = await fetch(API+'/carpool/trips/'+id+'/panic', {method:'PUT', headers:{'Authorization':'Bearer '+token}});
+    const d = await r.json();
+    if (d.error) return alert(d.error);
+    alert('🚨 Emergency reported. Admin has been notified.');
+    loadMyTrips();
+    loadMyBookings();
   } catch(e) { alert('Failed: '+e.message); }
 }
 
