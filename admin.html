@@ -76,7 +76,7 @@ tr:hover{background:#111820}
     </div>
 
     <div class="section" id="sec-rides">
-      <table><thead><tr><th>ID</th><th>Client</th><th>Driver</th><th>Pickup</th><th>Dropoff</th><th>Status</th><th>Fare</th><th>Date</th></tr></thead>
+      <table><thead><tr><th>ID</th><th>Client</th><th>Driver</th><th>Pickup</th><th>Dropoff</th><th>Status</th><th>Fare</th><th>Date</th><th></th></tr></thead>
       <tbody id="rides-table"></tbody></table>
     </div>
 
@@ -152,8 +152,18 @@ function loadRides(rides) {
     <td>${r.pickup}</td><td>${r.dropoff}</td>
     <td><span class="status ${r.status}">${r.status}</span></td>
     <td>${r.fare ? 'R'+r.fare : '—'}</td>
-    <td>${new Date(r.created).toLocaleDateString('en-ZA')}</td></tr>
+    <td>${new Date(r.created).toLocaleDateString('en-ZA')}</td>
+    <td>${r.status === 'requested' ? '<button class="btn" onclick="acceptRide(\''+r.id+'\')">Accept</button>' : ''}</td></tr>
   `).join('');
+}
+
+async function acceptRide(id) {
+  try {
+    const r = await fetch(API+'/rides/'+id+'/accept', {method:'PUT', headers:{'Authorization':'Bearer '+token}});
+    const d = await r.json();
+    if (d.error) return alert(d.error);
+    loadDashboard();
+  } catch(e) { alert('Failed: '+e.message); }
 }
 
 function loadUsers(clients, drivers) {
