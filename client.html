@@ -238,7 +238,6 @@ async function cancelRide(id) {
 
 function logout() {
   token = null; user = null;
-  document.getElementById('login-name').style.display = 'block';
   showScreen('login');
   if (driverTimer) clearInterval(driverTimer);
   if (locInterval) clearInterval(locInterval);

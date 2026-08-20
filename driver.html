@@ -324,7 +324,6 @@ function logout() {
   if (locInterval) clearInterval(locInterval);
   if (clientLocInterval) clearInterval(clientLocInterval);
   token = null; user = null; online = false;
-  document.getElementById('login-name').style.display = 'block';
   showScreen('login');
 }
 
