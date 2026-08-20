@@ -59,6 +59,14 @@ input:focus{outline:none;border-color:#5fd0ff;background:#1a2430}
     <div class="error" id="login-error"></div>
     <button class="btn" onclick="login()">Get Started</button>
     <div class="link" onclick="toggleLogin()">Already have an account? Sign in</div>
+    <div class="link" onclick="showForgot()" style="margin-top:4px">Forgot password?</div>
+    <div id="forgot-form" style="display:none;width:100%;margin-top:12px">
+      <input id="forgot-id" placeholder="Phone or email">
+      <input id="forgot-pass" type="password" placeholder="New password">
+      <button class="btn" onclick="forgotPassword()">Reset Password</button>
+      <div class="error" id="forgot-error"></div>
+      <div class="link" onclick="hideForgot()">← Back to login</div>
+    </div>
   </div>
 </div>
 
@@ -240,6 +248,31 @@ function logout() {
   token = null; user = null;
   document.getElementById('login-name').style.display = 'block';
   showScreen('login');
+  if (driverTimer) clearInterval(driverTimer);
+  if (locInterval) clearInterval(locInterval);
+}
+
+function showForgot() {
+  const c = document.getElementById('screen-login').querySelector('div');
+  c.querySelectorAll('h1,p,input,.btn,.link:not([onclick*=Forgot])').forEach(e => e.style.display = 'none');
+  document.getElementById('forgot-form').style.display = 'block';
+}
+function hideForgot() {
+  const c = document.getElementById('screen-login').querySelector('div');
+  c.querySelectorAll('h1,p,input,.btn,.link').forEach(e => e.style.display = '');
+  document.getElementById('forgot-form').style.display = 'none';
+}
+async function forgotPassword() {
+  const login = document.getElementById('forgot-id').value;
+  const password = document.getElementById('forgot-pass').value;
+  document.getElementById('forgot-error').textContent = '';
+  try {
+    const r = await fetch(API+'/auth/forgot', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login, password})});
+    const d = await r.json();
+    if (d.error) return document.getElementById('forgot-error').textContent = d.error;
+    alert('Password updated! Sign in with your new password.');
+    hideForgot();
+  } catch(e) { document.getElementById('forgot-error').textContent = 'Server error: '+e.message; }
 }
 
 // --- Map & Geocoding ---
